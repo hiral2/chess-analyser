@@ -14,7 +14,15 @@ from src.stockfish_engine import StockfishAnalyzer, format_metrics_block
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run one Chess.com analysis cycle.")
-    parser.add_argument("--limit", type=int, default=config.GAMES_LIMIT, help="Max games to analyze this run")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=config.GAMES_LIMIT,
+        help="Default mode only: max recent games to scan when checking for new activity since "
+        "the last run. Each affected day is still analyzed in full regardless of this cap — "
+        "increase it if the runner has been idle long enough that more than this many new "
+        "games, potentially spanning more days than this can see, may have piled up.",
+    )
     parser.add_argument("--skip-email", action="store_true", help="Do not send the PDF via email")
     parser.add_argument("--skip-pdf", action="store_true", help="Do not build a PDF report")
     parser.add_argument("--dry-run", action="store_true", help="Do everything except persist/email")
@@ -121,41 +129,71 @@ def persist_and_output(args, report: dict, current_date: str, last_game_end_time
             print(f"  Email sent to {config.EMAIL_TO}")
 
 
-def run_single(args) -> None:
-    """Default mode: analyze every game played since the last run, as one combined report.
+def process_day(args, day: dt.date, day_games: list[dict], force_overwrite: bool) -> None:
+    """Analyze one calendar day's full game list and persist it as that day's report.
 
-    Runs repeatedly (e.g. hourly via cron) are safe to overlap: `last_game_end_time`
-    tracks the exact Chess.com `end_time` of the newest game already covered, so a
-    run with no new games since the last one is a no-op, and a run with new games
-    groups only those new games into a fresh report (never re-including games
-    already covered by an earlier run today).
+    If a report for this date already exists and `force_overwrite` is False, it's
+    left untouched. Otherwise a fresh report is built from `day_games` (which
+    should be the *complete* set of games for that day, not just newly-found
+    ones) and replaces whatever report was previously stored for that date.
+    """
+    date_str = day.isoformat()
+    already_exists = report_exists(config.ANALYSIS_FILE, date_str)
+    if already_exists and not force_overwrite:
+        print(f"[{date_str}] report already exists, skipping (pass --force to overwrite)")
+        return
+
+    print(f"[{date_str}] analyzing {len(day_games)} game(s) with Stockfish (depth {config.STOCKFISH_DEPTH})...")
+    analyses = analyze_games(day_games)
+    if not analyses:
+        print(f"[{date_str}] no games could be analyzed, skipping")
+        return
+
+    report = build_report(args, day_games, analyses, date_str)
+    attach_pgns(report, day_games)
+
+    if args.dry_run:
+        print(f"[{date_str}] dry run — report generated but not persisted/emailed")
+        return
+
+    if already_exists:
+        remove_report_for_date(config.ANALYSIS_FILE, date_str)
+
+    last_game_end_time = max(g.get("end_time", 0) for g in day_games)
+    persist_and_output(args, report, date_str, last_game_end_time=last_game_end_time)
+
+
+def run_single(args) -> None:
+    """Default mode: check for games played since the last run, and refresh the
+    report for each calendar day touched by any new game.
+
+    Reports are grouped strictly by day: if a game is discovered on a day that
+    already has a report, that whole day's report is rebuilt from its complete,
+    current game list (old + new together) and replaces the old one — it's
+    never split into a second report for the same day. A day with no new games
+    is left completely untouched, and a run that finds nothing new is a no-op.
     """
     history = load_history(config.ANALYSIS_FILE)
     since_epoch = history.get("last_game_end_time")
 
-    print(f"Fetching up to {args.limit} game(s) for {config.CHESS_USERNAME} since the last run...")
-    games = get_recent_games(config.CHESS_USERNAME, args.limit, since_epoch)
-    if not games:
+    print(f"Checking for games played by {config.CHESS_USERNAME} since the last run...")
+    new_games = get_recent_games(config.CHESS_USERNAME, args.limit, since_epoch)
+    if not new_games:
         print("No new games found since the last run. Exiting.")
         return
 
-    print(f"Analyzing {len(games)} new game(s) with Stockfish (depth {config.STOCKFISH_DEPTH})...")
-    analyses = analyze_games(games)
-    if not analyses:
-        print("No games could be analyzed. Exiting.")
-        return
+    affected_days = sorted(group_by_day(new_games).keys())
+    print(
+        f"{len(new_games)} new game(s) found, touching {len(affected_days)} day(s): "
+        f"{', '.join(d.isoformat() for d in affected_days)}"
+    )
 
-    current_date = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    report = build_report(args, games, analyses, current_date)
-    attach_pgns(report, games)
-
-    if args.dry_run:
-        print("Dry run — report generated but not persisted/emailed:")
-        print(report)
-        return
-
-    last_game_end_time = max(g.get("end_time", 0) for g in games)
-    persist_and_output(args, report, current_date, last_game_end_time=last_game_end_time)
+    for day in affected_days:
+        print(f"[{day.isoformat()}] refreshing report with that day's complete game list...")
+        day_games = get_games_in_range(config.CHESS_USERNAME, day, day)
+        if not day_games:
+            continue
+        process_day(args, day, day_games, force_overwrite=True)
 
 
 def run_backfill(args) -> None:
@@ -183,31 +221,7 @@ def run_backfill(args) -> None:
     print(f"Found {len(games)} games across {len(groups)} day(s). Processing oldest first...")
 
     for day in sorted(groups):
-        date_str = day.isoformat()
-        already_exists = report_exists(config.ANALYSIS_FILE, date_str)
-        if already_exists and not args.force:
-            print(f"[{date_str}] report already exists, skipping (pass --force to overwrite)")
-            continue
-
-        day_games = groups[day]
-        print(f"[{date_str}] analyzing {len(day_games)} game(s) with Stockfish...")
-        analyses = analyze_games(day_games)
-        if not analyses:
-            print(f"[{date_str}] no games could be analyzed, skipping")
-            continue
-
-        report = build_report(args, day_games, analyses, date_str)
-        attach_pgns(report, day_games)
-
-        if args.dry_run:
-            print(f"[{date_str}] dry run — report generated but not persisted/emailed")
-            continue
-
-        if already_exists and args.force:
-            remove_report_for_date(config.ANALYSIS_FILE, date_str)
-
-        last_game_end_time = max(g.get("end_time", 0) for g in day_games)
-        persist_and_output(args, report, date_str, last_game_end_time=last_game_end_time)
+        process_day(args, day, groups[day], force_overwrite=args.force)
 
 
 def main():

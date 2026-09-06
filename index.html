@@ -17,6 +17,7 @@
     .move-arrow-svg { position: absolute; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; }
     .sq-move-highlight { background-color: rgba(255, 183, 0, 0.55) !important; }
     .sq-suggested-highlight { background-color: rgba(56, 161, 105, 0.45) !important; }
+    .sq-blunder-highlight { background-color: rgba(229, 62, 62, 0.45) !important; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
     .badge-low { background: #c6f6d5; color: #22543d; }
     .badge-medium { background: #feebc8; color: #744210; }
@@ -35,8 +36,6 @@
     .moment-card:first-of-type { border-top: none; }
     .jump-btn { margin-top: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px; border: 1px solid #90cdf4; background: #ebf8ff; color: #2b6cb0; cursor: pointer; }
     .jump-btn:hover { background: #bee3f8; }
-    .suggest-btn { margin-top: 6px; margin-left: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px; border: 1px solid #9ae6b4; background: #f0fff4; color: #276749; cursor: pointer; }
-    .suggest-btn:hover { background: #c6f6d5; }
     .opp-notes { font-size: 13px; color: #4a5568; }
     .result-tag { font-weight: normal; color: #718096; font-size: 14px; }
   </style>
@@ -61,6 +60,9 @@
       </marker>
       <marker id="arrowhead-marker-suggested" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
         <path d="M0,0 L8,4 L0,8 Z" fill="#38a169" />
+      </marker>
+      <marker id="arrowhead-marker-blunder" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#e53e3e" />
       </marker>
     </defs>
   </svg>
@@ -173,7 +175,7 @@
       const svg = document.getElementById(`arrow-${gIdx}`);
       if (boardEl) {
         boardEl.querySelectorAll('[data-square]').forEach(el => {
-          el.classList.remove('sq-move-highlight', 'sq-suggested-highlight');
+          el.classList.remove('sq-move-highlight', 'sq-suggested-highlight', 'sq-blunder-highlight');
         });
       }
       if (svg) svg.innerHTML = '';
@@ -241,21 +243,29 @@
       return match ? { from: match.from, to: match.to } : null;
     }
 
-    function showSuggestedMove(gIdx, ply, bestSan) {
-      setPly(gIdx, ply); // jump to the position first; this also clears prior overlays
-      const state = gameReplayState[gIdx];
-      if (!state) return;
-
-      const squares = resolveSanSquares(state.fens[state.index], bestSan);
+    function overlaySquares(gIdx, squares, color, markerId, highlightClass) {
       if (!squares) return;
-
       const boardEl = document.getElementById(`board-${gIdx}`);
       const svg = document.getElementById(`arrow-${gIdx}`);
+      if (!boardEl || !svg) return;
       const fromEl = boardEl.querySelector(`[data-square="${squares.from}"]`);
       const toEl = boardEl.querySelector(`[data-square="${squares.to}"]`);
-      if (fromEl) fromEl.classList.add('sq-suggested-highlight');
-      if (toEl) toEl.classList.add('sq-suggested-highlight');
-      drawArrow(svg, squares.from, squares.to, '#38a169', 'arrowhead-marker-suggested');
+      if (fromEl) fromEl.classList.add(highlightClass);
+      if (toEl) toEl.classList.add(highlightClass);
+      drawArrow(svg, squares.from, squares.to, color, markerId);
+    }
+
+    function jumpToMoment(gIdx, ply, bestSan) {
+      setPly(gIdx, ply); // jump to the position right before the mistake; clears prior overlays
+      const state = gameReplayState[gIdx];
+      if (!state) return;
+      // Red: state.moves[ply] is the move about to be played from this position — the mistake itself.
+      overlaySquares(gIdx, state.moves[ply], '#e53e3e', 'arrowhead-marker-blunder', 'sq-blunder-highlight');
+      // Green: the engine's suggested alternative from the same position.
+      if (bestSan) {
+        const suggested = resolveSanSquares(state.fens[state.index], bestSan);
+        overlaySquares(gIdx, suggested, '#38a169', 'arrowhead-marker-suggested', 'sq-suggested-highlight');
+      }
     }
 
     function updatePlyLabel(gIdx) {
@@ -280,20 +290,14 @@
     }
 
     document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.ctrl-btn, .jump-btn, .suggest-btn');
+      const btn = e.target.closest('.ctrl-btn, .jump-btn');
       if (!btn) return;
       const gIdx = parseInt(btn.dataset.gidx, 10);
       const state = gameReplayState[gIdx];
       if (!state) return;
 
       if (btn.classList.contains('jump-btn')) {
-        setPly(gIdx, parseInt(btn.dataset.ply, 10));
-        document.getElementById(`board-${gIdx}`).scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
-
-      if (btn.classList.contains('suggest-btn')) {
-        showSuggestedMove(gIdx, parseInt(btn.dataset.ply, 10), btn.dataset.best);
+        jumpToMoment(gIdx, parseInt(btn.dataset.ply, 10), btn.dataset.best);
         document.getElementById(`board-${gIdx}`).scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
@@ -342,14 +346,14 @@
         const oppClass = riskBadgeClass(opp.risk_level);
         const replay = game.pgn ? buildReplay(game.pgn) : null;
 
-        const momentsHtml = (game.key_moments || []).map((m) => {
+        const moments = (game.key_moments || []).map((m) => {
           const targetPly = (typeof m.ply === 'number') ? m.ply - 1 : (replay ? findPlyByFen(replay, m.fen) : null);
+          return { m, targetPly };
+        });
+
+        const momentsHtml = moments.map(({ m, targetPly }) => {
           const jumpBtn = (replay && targetPly !== null)
-            ? `<button class="jump-btn" data-gidx="${gIdx}" data-ply="${targetPly}">&#9654; Jump to this position</button>`
-            : '';
-          const suggestedSquares = (replay && targetPly !== null) ? resolveSanSquares(m.fen, m.best_move) : null;
-          const suggestBtn = suggestedSquares
-            ? `<button class="suggest-btn" data-gidx="${gIdx}" data-ply="${targetPly}" data-best="${m.best_move}">&#10003; Show suggested move</button>`
+            ? `<button class="jump-btn" data-gidx="${gIdx}" data-ply="${targetPly}" data-best="${m.best_move}">&#9654; Jump to this position</button>`
             : '';
           return `
             <div class="moment-card">
@@ -357,7 +361,7 @@
                 <span style="color:#e53e3e;">${m.blunder_move}</span>,
                 best was <span style="color:#38a169;">${m.best_move}</span></p>
               <p><em>${m.explanation}</em></p>
-              ${jumpBtn}${suggestBtn}
+              ${jumpBtn}
             </div>
           `;
         }).join('');
@@ -395,8 +399,16 @@
             pieceTheme: PIECE_THEME
           });
           gameReplayState[gIdx] = { ...replay, index: 0, board };
-          updatePlyLabel(gIdx);
-          drawMoveIndicator(gIdx);
+
+          // Default to the first flagged mistake (with its overlay) instead
+          // of a blank starting position, so there's something to see right away.
+          const firstMoment = moments.find(({ targetPly }) => targetPly !== null);
+          if (firstMoment) {
+            jumpToMoment(gIdx, firstMoment.targetPly, firstMoment.m.best_move);
+          } else {
+            updatePlyLabel(gIdx);
+            drawMoveIndicator(gIdx);
+          }
         }
       });
 

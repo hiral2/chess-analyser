@@ -6,11 +6,12 @@ engine telemetry into a coaching + fair-play review, and publishes the
 results as a history file, an interactive GitHub Pages dashboard, and an
 emailed PDF.
 
-Each run only fetches games newer than the last one it processed. If nothing
-new was played, it's a no-op; if new games are found, they're grouped into a
-single fresh report and prepended to the history — so a day with sporadic
-play ends up with several reports, one per burst of games, instead of one
-report per calendar day.
+Reports are grouped strictly by calendar day. Each run only checks for games
+newer than the last one it saw; if nothing new was played, it's a no-op. If
+new games are found, every calendar day touched by one of them gets its
+report rebuilt from that day's *complete* game list (old + new together) and
+replaces whatever was there before — a day never ends up with more than one
+report, no matter how many times new games trigger a refresh of it.
 
 By default the coaching/fair-play write-up is generated locally by a
 deterministic rule engine (no API key or network call needed). Pass
@@ -44,9 +45,10 @@ Chess.com API -> Stockfish (ACPL / top-1 match) -> rule engine (or Claude) -> da
 
 ## Pulling a new analysis
 
-Run one cycle locally (fetches every game played since the last run, runs
-Stockfish at depth 14, generates the report, prepends it to
-`data/analysis.json`, and writes a PDF to `reports/`):
+Run one cycle locally (checks for games played since the last run; for every
+day touched by a new game, re-fetches that day's complete game list, runs
+Stockfish at depth 14, rebuilds the report, and replaces that day's entry in
+`data/analysis.json`; also writes a PDF to `reports/`):
 
 ```
 python main.py --skip-email
@@ -54,12 +56,15 @@ python main.py --skip-email
 
 Running it again immediately is safe and cheap — with no new games it just
 prints "No new games found since the last run" and exits without touching
-anything. This is the mode the hourly GitHub Actions workflow uses.
+anything. This is the mode the hourly GitHub Actions workflow uses. `--limit`
+bounds how many recent games it scans to detect new activity (default from
+`GAMES_LIMIT`); bump it if the runner has been idle long enough that more new
+games than that may have piled up.
 
 Add `--use-claude` to generate the write-up with Claude instead of the local
 rule engine (requires `ANTHROPIC_API_KEY` and API credits). Other flags:
-`--limit N` (max games to pull per run), `--skip-pdf`, `--dry-run` (print the
-report without persisting/emailing anything).
+`--skip-pdf`, `--dry-run` (print the report without persisting/emailing
+anything).
 
 ### Backfilling a date range
 
@@ -130,8 +135,10 @@ Email is skipped automatically if `SMTP_HOST`/`EMAIL_TO` aren't set.
 - `src/claude_client.py` — used only with `--use-claude`: the exact
   system/user prompts and JSON schema from the spec, sent via the Anthropic
   SDK.
-- `src/persistence.py` — append-only history: each run prepends a report to
-  `data/analysis.json` (newest first), never overwriting past runs.
+- `src/persistence.py` — history storage: reports are kept newest-first, one
+  per calendar day. A day's report can be replaced in place (when new games
+  are found for that day, or via `--force` in backfill mode) but a day never
+  ends up with more than one report.
 - `src/pdf_report.py` / `src/mailer.py` — render the report as a PDF and
   email it.
 - `index.html` — GitHub Pages dashboard: a dropdown of historical runs, a

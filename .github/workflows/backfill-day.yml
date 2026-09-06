@@ -1,0 +1,88 @@
+name: Backfill Specific Day
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to (re)analyze, UTC (YYYY-MM-DD)"
+        required: true
+        type: string
+      force:
+        description: "Overwrite that day's report if one already exists"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Shares the "pages" group with analysis.yml so the two workflows never
+# push to the branch or deploy Pages at the same time.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Analyze the requested day
+        env:
+          CHESS_USERNAME: ${{ secrets.CHESS_USERNAME }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          STOCKFISH_PATH: stockfish
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          BACKFILL_DATE: ${{ inputs.date }}
+          BACKFILL_FORCE: ${{ inputs.force }}
+        run: |
+          ARGS=(--since "$BACKFILL_DATE" --until "$BACKFILL_DATE" --skip-email --skip-pdf)
+          if [ "$BACKFILL_FORCE" = "true" ]; then
+            ARGS+=(--force)
+          fi
+          python main.py "${ARGS[@]}"
+
+      - name: Commit updated analysis data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/analysis.json
+          git diff --cached --quiet || git commit -m "chore: backfill chess analysis for ${{ inputs.date }} [skip ci]"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy-pages:
+    needs: backfill
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
