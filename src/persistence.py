@@ -2,6 +2,31 @@
 import json
 import os
 
+import requests
+
+
+def sync_from_remote(url: str, analysis_file: str) -> None:
+    """Overwrite the local analysis file with the content currently published
+    at `url` (e.g. the live GitHub Pages data/analysis.json), so this run
+    starts from the real deployed state rather than a git-checked-out copy
+    that may be stale or, in a git-push-free setup, never updated at all.
+
+    Any failure (nothing deployed yet, network hiccup, bad JSON) is swallowed
+    and the existing local file / defaults are used instead — this is a
+    best-effort sync, not a hard dependency.
+    """
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"Could not fetch remote history from {url} ({e}); using local state instead.")
+        return
+
+    os.makedirs(os.path.dirname(analysis_file) or ".", exist_ok=True)
+    with open(analysis_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
 
 def load_history(analysis_file: str) -> dict:
     if os.path.exists(analysis_file):

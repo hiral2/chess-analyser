@@ -10,7 +10,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -49,15 +49,10 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          # Pull the current published state from the live site itself instead of
+          # relying on a git-committed copy — no commit/push needed at all this way.
+          REMOTE_HISTORY_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/analysis.json
         run: python main.py --skip-email --skip-pdf
-
-      - name: Commit updated analysis data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/analysis.json
-          git diff --cached --quiet || git commit -m "chore: update chess analysis data [skip ci]"
-          git push
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -14,12 +14,12 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 # Shares the "pages" group with analysis.yml so the two workflows never
-# push to the branch or deploy Pages at the same time.
+# deploy Pages at the same time.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -56,20 +56,15 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           BACKFILL_DATE: ${{ inputs.date }}
           BACKFILL_FORCE: ${{ inputs.force }}
+          # Pull the current published state from the live site itself instead of
+          # relying on a git-committed copy — no commit/push needed at all this way.
+          REMOTE_HISTORY_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/analysis.json
         run: |
           ARGS=(--since "$BACKFILL_DATE" --until "$BACKFILL_DATE" --skip-email --skip-pdf)
           if [ "$BACKFILL_FORCE" = "true" ]; then
             ARGS+=(--force)
           fi
           python main.py "${ARGS[@]}"
-
-      - name: Commit updated analysis data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/analysis.json
-          git diff --cached --quiet || git commit -m "chore: backfill chess analysis for ${{ inputs.date }} [skip ci]"
-          git push
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

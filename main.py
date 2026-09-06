@@ -8,7 +8,7 @@ from src import config
 from src.chess_com_client import get_games_in_range, get_recent_games, group_by_day
 from src.mailer import send_report_email
 from src.pdf_report import build_pdf
-from src.persistence import load_history, persist_report, remove_report_for_date, report_exists
+from src.persistence import load_history, persist_report, remove_report_for_date, report_exists, sync_from_remote
 from src.stockfish_engine import StockfishAnalyzer, format_metrics_block
 
 
@@ -231,6 +231,10 @@ def main():
         sys.exit("CHESS_USERNAME is not set.")
     if args.use_claude and not config.ANTHROPIC_API_KEY:
         sys.exit("ANTHROPIC_API_KEY is not set (required for --use-claude).")
+
+    if config.REMOTE_HISTORY_URL:
+        print(f"Syncing local state from {config.REMOTE_HISTORY_URL}...")
+        sync_from_remote(config.REMOTE_HISTORY_URL, config.ANALYSIS_FILE)
 
     if args.since:
         run_backfill(args)

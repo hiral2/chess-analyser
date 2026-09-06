@@ -25,6 +25,12 @@ GAMES_LIMIT = _int("GAMES_LIMIT", 10)
 ANALYSIS_FILE = os.environ.get("ANALYSIS_FILE", "data/analysis.json")
 REPORTS_DIR = os.environ.get("REPORTS_DIR", "reports")
 
+# If set, the run fetches this URL (the live GitHub Pages data/analysis.json)
+# as its starting state instead of trusting the local/git-checked-out file —
+# see src/persistence.sync_from_remote. Lets the CI workflow avoid needing to
+# commit data/analysis.json back to a (possibly protected) branch at all.
+REMOTE_HISTORY_URL = os.environ.get("REMOTE_HISTORY_URL", "")
+
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = _int("SMTP_PORT", 587)
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")

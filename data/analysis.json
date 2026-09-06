@@ -1,12 +1,13 @@
 {
   "last_updated": "2026-09-06",
+  "last_game_end_time": 1788723563,
   "reports": [
     {
       "date": "2026-09-06",
-      "summary": "Across 10 games (4W/5L/1D), rjhiral2 averaged 87.9 centipawn loss per move, rated 'Poor'. 31 outright blunder(s) were detected. Fair-play scan: LOW risk across opponents.",
+      "summary": "Across 11 games (5W/5L/1D), rjhiral2 averaged 85.9 centipawn loss per move, rated 'Poor'. 33 outright blunder(s) were detected. Fair-play scan: LOW risk across opponents.",
       "overall_metrics": {
-        "total_games": 10,
-        "wins": 4,
+        "total_games": 11,
+        "wins": 5,
         "losses": 5,
         "draws": 1,
         "primary_opening_weakness": "Undefined",
@@ -411,14 +412,67 @@
             }
           ],
           "pgn": "[Event \"Live Chess\"]\n[Site \"Chess.com\"]\n[Date \"2026.09.06\"]\n[Round \"-\"]\n[White \"Ahmed_toulan666\"]\n[Black \"rjhiral2\"]\n[Result \"0-1\"]\n[CurrentPosition \"6k1/p6p/6p1/2Np4/2b1p3/7R/P1P3PP/5rK1 w - - 0 28\"]\n[Timezone \"UTC\"]\n[ECO \"B12\"]\n[ECOUrl \"https://www.chess.com/openings/Caro-Kann-Defense-Advance-Variation\"]\n[UTCDate \"2026.09.06\"]\n[UTCTime \"16:00:31\"]\n[WhiteElo \"1181\"]\n[BlackElo \"1211\"]\n[TimeControl \"600\"]\n[Termination \"rjhiral2 won by checkmate\"]\n[StartTime \"16:00:31\"]\n[EndDate \"2026.09.06\"]\n[EndTime \"16:04:12\"]\n[Link \"https://www.chess.com/game/live/174087379622\"]\n\n1. e4 {[%clk 0:09:59.8]} 1... c6 {[%clk 0:09:59.3]} 2. d4 {[%clk 0:09:59]} 2... d5 {[%clk 0:09:59.2]} 3. e5 {[%clk 0:09:57.7]} 3... e6 {[%clk 0:09:58.3]} 4. Nf3 {[%clk 0:09:57.2]} 4... c5 {[%clk 0:09:57.8]} 5. Bb5+ {[%clk 0:09:54.5]} 5... Nc6 {[%clk 0:09:55.1]} 6. dxc5 {[%clk 0:09:52.9]} 6... Bxc5 {[%clk 0:09:51.8]} 7. Be3 {[%clk 0:09:50.9]} 7... Qb6 {[%clk 0:09:48.2]} 8. Nc3 {[%clk 0:09:47.3]} 8... Bxe3 {[%clk 0:09:46.7]} 9. fxe3 {[%clk 0:09:45.8]} 9... Qxe3+ {[%clk 0:09:44.9]} 10. Ne2 {[%clk 0:09:43.3]} 10... Ne7 {[%clk 0:09:35.4]} 11. Qd4 {[%clk 0:09:34.3]} 11... Qxd4 {[%clk 0:09:25.7]} 12. Nfxd4 {[%clk 0:09:31.7]} 12... O-O {[%clk 0:09:25.6]} 13. Bxc6 {[%clk 0:09:28.7]} 13... Nxc6 {[%clk 0:09:23.6]} 14. Nxc6 {[%clk 0:09:27.7]} 14... bxc6 {[%clk 0:09:23.5]} 15. O-O {[%clk 0:09:26.1]} 15... Ba6 {[%clk 0:09:21.2]} 16. Rae1 {[%clk 0:09:22.8]} 16... Rab8 {[%clk 0:09:20]} 17. b3 {[%clk 0:09:20.2]} 17... c5 {[%clk 0:09:18.2]} 18. Rf3 {[%clk 0:09:18.5]} 18... c4 {[%clk 0:09:17]} 19. Rg3 {[%clk 0:09:13.1]} 19... g6 {[%clk 0:09:08.9]} 20. Rh3 {[%clk 0:09:11.4]} 20... f6 {[%clk 0:09:01.2]} 21. Nf4 {[%clk 0:09:08.7]} 21... fxe5 {[%clk 0:08:53.9]} 22. Nxe6 {[%clk 0:09:07.7]} 22... Rf5 {[%clk 0:08:43.6]} 23. bxc4 {[%clk 0:08:56.2]} 23... Bxc4 {[%clk 0:08:41.4]} 24. Nc5 {[%clk 0:08:50.1]} 24... Rbf8 {[%clk 0:08:25.1]} 25. Nd3 {[%clk 0:08:27.1]} 25... e4 {[%clk 0:08:13.8]} 26. Nc5 {[%clk 0:08:24.9]} 26... Rf1+ {[%clk 0:08:10.4]} 27. Rxf1 {[%clk 0:08:20.7]} 27... Rxf1# {[%clk 0:08:10.3]} 0-1\n"
+        },
+        {
+          "game_id": "https://www.chess.com/game/live/174095858450",
+          "white": "losangelesx7",
+          "black": "rjhiral2",
+          "result": "0-1",
+          "user_color": "black",
+          "opponent_fair_play": {
+            "opponent_username": "losangelesx7",
+            "acpl": 83.7,
+            "top_1_match_pct": 28.6,
+            "risk_level": "LOW",
+            "notes": "losangelesx7's ACPL of 83.7 and 28.6% top-1 match rate are consistent with normal human play."
+          },
+          "key_moments": [
+            {
+              "move_number": 38,
+              "fen": "6r1/2r2k2/4R2p/3N2bP/2p5/5p2/5K2/2R5 b - - 3 38",
+              "blunder_move": "Kxe6",
+              "best_move": "Rc5",
+              "move_type": "Blunder",
+              "explanation": "Kxe6 costs about 454 centipawns versus the engine's top choice, Rc5. This likely hangs material or allows a forced tactical shot.",
+              "ply": 76
+            },
+            {
+              "move_number": 35,
+              "fen": "6r1/2rbbk2/4P2p/4R2P/2p2Np1/5P2/8/2R3K1 b - - 0 35",
+              "blunder_move": "Bxe6",
+              "best_move": "Kf6",
+              "move_type": "Blunder",
+              "explanation": "Bxe6 costs about 338 centipawns versus the engine's top choice, Kf6. This likely hangs material or allows a forced tactical shot.",
+              "ply": 70
+            }
+          ],
+          "pgn": "[Event \"Live Chess\"]\n[Site \"Chess.com\"]\n[Date \"2026.09.06\"]\n[Round \"-\"]\n[White \"losangelesx7\"]\n[Black \"rjhiral2\"]\n[Result \"0-1\"]\n[CurrentPosition \"6r1/8/7p/2k4P/2p1N3/5p2/5K2/2b5 b - - 1 42\"]\n[Timezone \"UTC\"]\n[ECO \"B10\"]\n[ECOUrl \"https://www.chess.com/openings/Caro-Kann-Defense\"]\n[UTCDate \"2026.09.06\"]\n[UTCTime \"19:26:43\"]\n[WhiteElo \"1211\"]\n[BlackElo \"1219\"]\n[TimeControl \"600\"]\n[Termination \"rjhiral2 won by resignation\"]\n[StartTime \"19:26:43\"]\n[EndDate \"2026.09.06\"]\n[EndTime \"19:39:23\"]\n[Link \"https://www.chess.com/game/live/174095858450\"]\n\n1. e4 {[%clk 0:09:59.4]} 1... c6 {[%clk 0:09:59.4]} 2. Bc4 {[%clk 0:09:57.2]} 2... d5 {[%clk 0:09:58.7]} 3. exd5 {[%clk 0:09:54.2]} 3... cxd5 {[%clk 0:09:58.6]} 4. Bb3 {[%clk 0:09:48.2]} 4... Nf6 {[%clk 0:09:57.3]} 5. f3 {[%clk 0:09:45.6]} 5... e6 {[%clk 0:09:56.5]} 6. Nh3 {[%clk 0:09:35.5]} 6... Nc6 {[%clk 0:09:55.2]} 7. Ba4 {[%clk 0:09:30.8]} 7... a6 {[%clk 0:09:49.5]} 8. Bxc6+ {[%clk 0:09:28.3]} 8... bxc6 {[%clk 0:09:47.5]} 9. d4 {[%clk 0:09:16]} 9... c5 {[%clk 0:09:43.9]} 10. c3 {[%clk 0:09:00]} 10... c4 {[%clk 0:09:42.1]} 11. Bg5 {[%clk 0:08:58.2]} 11... Be7 {[%clk 0:09:39.2]} 12. Bxf6 {[%clk 0:08:55.9]} 12... Bxf6 {[%clk 0:09:37.4]} 13. Nd2 {[%clk 0:08:45.2]} 13... O-O {[%clk 0:09:36.2]} 14. Nf1 {[%clk 0:08:40.5]} 14... Bd7 {[%clk 0:09:35]} 15. Ng3 {[%clk 0:08:38.8]} 15... a5 {[%clk 0:09:33.1]} 16. O-O {[%clk 0:08:18.9]} 16... a4 {[%clk 0:09:30.6]} 17. b3 {[%clk 0:08:13]} 17... axb3 {[%clk 0:09:25.1]} 18. axb3 {[%clk 0:08:11.5]} 18... cxb3 {[%clk 0:09:23]} 19. Qxb3 {[%clk 0:08:08.1]} 19... Rc8 {[%clk 0:08:54.4]} 20. Rac1 {[%clk 0:08:02.1]} 20... Qa5 {[%clk 0:08:46.3]} 21. Nh5 {[%clk 0:07:42.2]} 21... Be7 {[%clk 0:08:29.7]} 22. Nxg7 {[%clk 0:07:19.8]} 22... Kxg7 {[%clk 0:08:26.6]} 23. Nf4 {[%clk 0:07:13]} 23... Rg8 {[%clk 0:08:07]} 24. Qb7 {[%clk 0:06:47.5]} 24... Qc7 {[%clk 0:08:03.4]} 25. Qxc7 {[%clk 0:06:31.3]} 25... Rxc7 {[%clk 0:08:02.4]} 26. Nh5+ {[%clk 0:06:23.1]} 26... Kf8 {[%clk 0:07:58.4]} 27. g4 {[%clk 0:06:13.1]} 27... Rg5 {[%clk 0:07:39.3]} 28. Rfe1 {[%clk 0:05:54.4]} 28... f5 {[%clk 0:07:34.2]} 29. Re5 {[%clk 0:05:39.9]} 29... h6 {[%clk 0:07:06.6]} 30. h4 {[%clk 0:05:28.9]} 30... Rg6 {[%clk 0:06:56.4]} 31. Nf4 {[%clk 0:05:05.2]} 31... Rg8 {[%clk 0:06:43.5]} 32. h5 {[%clk 0:04:55.1]} 32... Kf7 {[%clk 0:06:26.8]} 33. c4 {[%clk 0:04:13.3]} 33... dxc4 {[%clk 0:06:20.5]} 34. d5 {[%clk 0:04:07.8]} 34... fxg4 {[%clk 0:06:10.8]} 35. dxe6+ {[%clk 0:03:51.4]} 35... Bxe6 {[%clk 0:06:00.9]} 36. Rxe6 {[%clk 0:03:39.6]} 36... gxf3+ {[%clk 0:05:53.5]} 37. Kf2 {[%clk 0:03:38.1]} 37... Bg5 {[%clk 0:05:31.3]} 38. Nd5 {[%clk 0:03:07.7]} 38... Kxe6 {[%clk 0:05:21.5]} 39. Nxc7+ {[%clk 0:03:03.7]} 39... Kd6 {[%clk 0:05:12.9]} 40. Nb5+ {[%clk 0:02:59.8]} 40... Kc5 {[%clk 0:05:07.6]} 41. Nc3 {[%clk 0:02:51.5]} 41... Bxc1 {[%clk 0:05:04.5]} 42. Ne4+ {[%clk 0:02:45]} 0-1\n"
         }
       ],
       "coaching_plan": [
         "Your highest average centipawn loss is in the endgame: focus study time and puzzle practice there before drilling other phases.",
         "Review core theory and typical plans in Undefined, where your average centipawn loss was highest among openings played.",
-        "You blundered 31 time(s) this batch. Before every move, scan for hanging pieces and forcing replies (checks, captures, threats) from your opponent."
+        "You blundered 33 time(s) this batch. Before every move, scan for hanging pieces and forcing replies (checks, captures, threats) from your opponent."
       ]
+    },
+    {
+      "date": "2026-08-06",
+      "summary": "fake remote report",
+      "overall_metrics": {
+        "total_games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "primary_opening_weakness": "X",
+        "tactical_accuracy_rating": "Poor"
+      },
+      "fair_play_assessment": {
+        "suspicious_activity_detected": false,
+        "overall_risk_level": "LOW",
+        "summary_notes": "n/a"
+      },
+      "games": [],
+      "coaching_plan": []
     }
-  ],
-  "last_game_end_time": 1788710652
+  ]
 }
