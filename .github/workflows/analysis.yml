@@ -1,0 +1,76 @@
+name: Chess Analysis Pipeline
+
+on:
+  schedule:
+    # Every hour, on the hour. main.py only fetches games played since the
+    # last run (tracked via last_game_end_time in data/analysis.json), so a
+    # run with nothing new is a no-op and a run with new games since the last
+    # one groups them into a single fresh report.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run analysis pipeline
+        env:
+          CHESS_USERNAME: ${{ secrets.CHESS_USERNAME }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          STOCKFISH_PATH: stockfish
+          GAMES_LIMIT: ${{ vars.GAMES_LIMIT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python main.py --skip-email --skip-pdf
+
+      - name: Commit updated analysis data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/analysis.json
+          git diff --cached --quiet || git commit -m "chore: update chess analysis data [skip ci]"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy-pages:
+    needs: analyze
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
