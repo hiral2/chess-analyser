@@ -74,7 +74,12 @@
     // Per-game replay state for the currently rendered report: { [gIdx]: { fens, sans, index, board } }
     let gameReplayState = {};
 
-    fetch('./data/analysis.json')
+    // Cache-bust: GitHub Pages serves through a CDN whose cache headers we
+    // can't configure, and there's no git commit to key a new deploy off of
+    // (see README's Persistence model), so a stale cached copy would
+    // otherwise stick around. The timestamped query param plus `no-store`
+    // forces every load to fetch the actually-current published file.
+    fetch(`./data/analysis.json?t=${Date.now()}`, { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         reportHistory = data.reports || [];

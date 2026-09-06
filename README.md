@@ -100,10 +100,14 @@ pytest
 
 The workflow at `.github/workflows/analysis.yml` runs every hour on the hour
 (and on manual dispatch), installs Stockfish, runs
-`python main.py --skip-email --skip-pdf`, commits the updated
-`data/analysis.json` back to the repo if it changed, and deploys the repo
-root (including `index.html`) to GitHub Pages. Hours with no new games are
-cheap no-ops (no commit, no new report).
+`python main.py --skip-email --skip-pdf`, and deploys the repo root
+(including `index.html` and the freshly-updated `data/analysis.json`) to
+GitHub Pages. It never commits anything back to git — `main.py` fetches the
+currently-published `data/analysis.json` from the live Pages URL itself as
+its starting state (`REMOTE_HISTORY_URL`, set automatically in the workflow),
+updates it in memory/on disk for this run only, and that updated copy is what
+gets deployed. This sidesteps needing write access to `master` entirely (see
+"Persistence model" below). Hours with no new games are cheap no-ops.
 
 Configure once in the repo's **Settings**:
 
@@ -116,6 +120,25 @@ Configure once in the repo's **Settings**:
   `ANTHROPIC_MODEL`, `GAMES_LIMIT`
 
 Email is skipped automatically if `SMTP_HOST`/`EMAIL_TO` aren't set.
+
+## Persistence model
+
+`data/analysis.json` is **not** tracked in git (see `.gitignore`) and CI never
+commits it. The live GitHub Pages deployment is the source of truth:
+
+- Locally, with `REMOTE_HISTORY_URL` unset, `main.py` just reads/writes the
+  local file — nothing changes from a normal script's perspective.
+- In CI, `REMOTE_HISTORY_URL` points at the workflow's own live Pages URL.
+  Before doing anything else, it fetches that URL and overwrites the local
+  file with it — so the run starts from what's actually published, not a
+  stale git snapshot. It then updates that file in place and the Pages
+  deploy step publishes the result. Nothing is ever pushed to git.
+- If the fetch fails (nothing deployed yet, a network hiccup), it falls back
+  to whatever's in the local/checked-out file, which is fine — a missing or
+  empty file just means the dashboard starts with no history.
+
+This also means a fresh `git clone` won't have any local `data/analysis.json`
+until you run `python main.py` yourself — that's expected.
 
 ## How it works
 
