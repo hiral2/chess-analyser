@@ -2,7 +2,7 @@ from src.rule_based_coach import generate_analysis
 from src.stockfish_engine import GameAnalysis, MoveRecord
 
 
-def _move(ply, color, cp_loss, eval_before=0, is_top1=False, san="e4", best="e4"):
+def _move(ply, color, cp_loss, eval_before=0, is_top1=False, san="e4", best="e4", is_brilliant=False):
     return MoveRecord(
         ply=ply,
         move_number=(ply + 1) // 2,
@@ -13,6 +13,7 @@ def _move(ply, color, cp_loss, eval_before=0, is_top1=False, san="e4", best="e4"
         cp_loss=cp_loss,
         is_top1=is_top1,
         eval_before=eval_before,
+        is_brilliant=is_brilliant,
     )
 
 
@@ -50,6 +51,28 @@ def test_opponent_flagged_as_high_risk_when_metrics_are_extreme():
     assert opp["risk_level"] == "HIGH"
     assert report["fair_play_assessment"]["overall_risk_level"] == "HIGH"
     assert report["fair_play_assessment"]["suspicious_activity_detected"] is True
+
+
+def test_total_brilliant_moves_counts_only_the_analyzed_user_across_all_games():
+    # hero is white in game 1 (1 brilliant move) and black in game 2 (2
+    # brilliant moves). The opponent also has brilliant moves in both games,
+    # which must NOT be counted toward hero's total.
+    game1 = GameAnalysis(url="g1", white="hero", black="villain", result="1-0")
+    game1.moves = [
+        _move(1, "white", 0, is_brilliant=True),  # hero: brilliant
+        _move(2, "black", 0, is_brilliant=True),  # villain: brilliant (must not count)
+    ]
+    game2 = GameAnalysis(url="g2", white="villain", black="hero", result="0-1")
+    game2.moves = [
+        _move(1, "white", 0, is_brilliant=True),  # villain: brilliant (must not count)
+        _move(2, "black", 0, is_brilliant=True),  # hero: brilliant
+        _move(3, "white", 10),
+        _move(4, "black", 0, is_brilliant=True),  # hero: brilliant
+    ]
+
+    report = generate_analysis("hero", "2026-09-06", [game1, game2], book_plies=0)
+
+    assert report["overall_metrics"]["total_brilliant_moves"] == 3
 
 
 def test_no_games_produces_zeroed_report_without_crashing():

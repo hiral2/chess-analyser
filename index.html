@@ -15,13 +15,18 @@
     .board-wrap { position: relative; width: 360px; margin: 12px 0; }
     .board-wrap .board-large { margin: 0; }
     .move-arrow-svg { position: absolute; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; }
-    .sq-move-highlight { background-color: rgba(255, 183, 0, 0.55) !important; }
-    .sq-suggested-highlight { background-color: rgba(56, 161, 105, 0.45) !important; }
-    .sq-blunder-highlight { background-color: rgba(229, 62, 62, 0.45) !important; }
+    .sq-quality-highlight { /* background-color set inline per move's quality tier */ }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
     .badge-low { background: #c6f6d5; color: #22543d; }
     .badge-medium { background: #feebc8; color: #744210; }
     .badge-high { background: #fed7d7; color: #742a2a; }
+    .badge-win { background: #c6f6d5; color: #22543d; }
+    .badge-loss { background: #fed7d7; color: #742a2a; }
+    .badge-draw { background: #e2e8f0; color: #4a5568; }
+    .game-card { border-left: 4px solid transparent; }
+    .game-card.outcome-win { border-left-color: #38a169; }
+    .game-card.outcome-loss { border-left-color: #e53e3e; }
+    .game-card.outcome-draw { border-left-color: #a0aec0; }
     select { padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 14px; margin-bottom: 16px; }
     .metrics-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
     .metric { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 14px; font-size: 13px; }
@@ -37,7 +42,31 @@
     .jump-btn { margin-top: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px; border: 1px solid #90cdf4; background: #ebf8ff; color: #2b6cb0; cursor: pointer; }
     .jump-btn:hover { background: #bee3f8; }
     .opp-notes { font-size: 13px; color: #4a5568; }
+    .move-quality-table { border-collapse: collapse; font-size: 12px; margin: 10px 0; }
+    .move-quality-table th { text-align: center; padding: 4px 12px; color: #718096; font-weight: 600; }
+    .move-quality-table th:first-child { width: 90px; }
+    .move-quality-table td { padding: 3px 12px; }
+    .mq-swatch { display: flex; align-items: center; gap: 6px; color: #4a5568; }
+    .mq-swatch span { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .mq-count { text-align: center; font-weight: 600; color: #2d3748; }
     .result-tag { font-weight: normal; color: #718096; font-size: 14px; }
+    .replay-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+    .replay-left { flex: 0 0 auto; }
+    .move-list-wrap { flex: 1 1 220px; min-width: 200px; max-width: 320px; max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; margin: 12px 0; }
+    .move-list { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .move-list td { padding: 4px 8px; vertical-align: middle; }
+    .move-list thead th { position: sticky; top: 0; background: #f7fafc; color: #4a5568; text-align: left; font-size: 12px; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; z-index: 1; }
+    .move-list thead th.move-num { background: #f7fafc; }
+    .move-num { color: #a0aec0; width: 28px; text-align: right; }
+    .move-cell { cursor: pointer; border-radius: 4px; position: relative; }
+    .move-cell:hover { background: #f7fafc; }
+    .move-cell.active { box-shadow: inset 0 0 0 2px #4299e1; }
+    .move-quality-icon { display: inline-block; font-weight: bold; font-size: 11px; margin-right: 2px; width: 14px; text-align: center; }
+    .move-piece { display: inline-block; width: 16px; text-align: center; color: #4a5568; }
+    .move-san { display: inline-block; min-width: 38px; }
+    .move-timebar { display: inline-block; width: 40px; height: 5px; background: #edf2f7; border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 4px; }
+    .move-timebar-fill { display: block; height: 100%; background: #a0aec0; }
+    .move-cell.active .move-timebar-fill { background: #4299e1; }
   </style>
 </head>
 <body>
@@ -55,11 +84,32 @@
 
   <svg width="0" height="0" style="position: absolute;">
     <defs>
-      <marker id="arrowhead-marker" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-        <path d="M0,0 L8,4 L0,8 Z" fill="#d69e2e" />
-      </marker>
+      <!-- One arrowhead per move-quality tier (see MOVE_QUALITY_COLORS), plus a
+           dedicated "suggested" one for the engine's hypothetical alternative
+           (a move that was never actually played, so it has no tier of its own). -->
       <marker id="arrowhead-marker-suggested" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
         <path d="M0,0 L8,4 L0,8 Z" fill="#38a169" />
+      </marker>
+      <marker id="arrowhead-marker-brilliant" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#1baca6" />
+      </marker>
+      <marker id="arrowhead-marker-best" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#38a169" />
+      </marker>
+      <marker id="arrowhead-marker-excellent" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#48bb78" />
+      </marker>
+      <marker id="arrowhead-marker-good" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#68a063" />
+      </marker>
+      <marker id="arrowhead-marker-book" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#a0aec0" />
+      </marker>
+      <marker id="arrowhead-marker-inaccuracy" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#ecc94b" />
+      </marker>
+      <marker id="arrowhead-marker-mistake" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#ed8936" />
       </marker>
       <marker id="arrowhead-marker-blunder" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
         <path d="M0,0 L8,4 L0,8 Z" fill="#e53e3e" />
@@ -70,45 +120,86 @@
   <script>
     const PIECE_THEME = 'https://cdn.jsdelivr.net/gh/oakmac/chessboardjs@1.0.0/website/img/chesspieces/wikipedia/{piece}.png';
 
-    let reportHistory = [];
     // Per-game replay state for the currently rendered report: { [gIdx]: { fens, sans, index, board } }
     let gameReplayState = {};
+    let currentUsername = null;
+    // Bumped on every renderReport() call. Per-game PGN fetches are async and
+    // tagged with the generation active when they were kicked off; if the
+    // user switches reports before one resolves, its generation is stale and
+    // the result is discarded instead of overwriting a same-id element that
+    // now belongs to a different (newer) report.
+    let renderGeneration = 0;
 
     // Cache-bust: GitHub Pages serves through a CDN whose cache headers we
     // can't configure, and there's no git commit to key a new deploy off of
     // (see README's Persistence model), so a stale cached copy would
     // otherwise stick around. The timestamped query param plus `no-store`
     // forces every load to fetch the actually-current published file.
-    fetch(`./data/analysis.json?t=${Date.now()}`, { cache: 'no-store' })
-      .then(res => res.json())
+    function fetchFresh(path) {
+      return fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' }).then(res => res.json());
+    }
+
+    // Data is split three ways so the dashboard never downloads more than it
+    // needs: data/latest.json (which username's folder to use) ->
+    // data/<user>/index.json (small manifest of dates) ->
+    // data/<user>/analysis-date/<date>.json (one day's report, games
+    // referencing their PGN by "game_slug" rather than embedding it) ->
+    // data/<user>/games/<slug>.json (fetched lazily per game, on demand).
+    fetchFresh('./data/latest.json')
+      .then(latest => {
+        currentUsername = latest.username;
+        return fetchFresh(`./data/${currentUsername}/index.json`);
+      })
       .then(data => {
-        reportHistory = data.reports || [];
+        const dates = (data.analysis_dates || []).map(r => r.date);
         const select = document.getElementById('report-select');
 
-        reportHistory.forEach((report, index) => {
+        dates.forEach((date) => {
           const opt = document.createElement('option');
-          opt.value = index;
-          opt.textContent = `Report Date: ${report.date}`;
+          opt.value = date;
+          opt.textContent = `Report Date: ${date}`;
           select.appendChild(opt);
         });
 
-        if (reportHistory.length > 0) {
-          renderReport(0);
+        if (dates.length > 0) {
+          loadAndRenderReport(dates[0]);
         } else {
           document.getElementById('summary-text').innerHTML = '<span class="empty-state">No analysis runs yet. Check back after the next scheduled run.</span>';
         }
       })
       .catch(() => {
-        document.getElementById('summary-text').innerHTML = '<span class="empty-state">Could not load data/analysis.json.</span>';
+        document.getElementById('summary-text').innerHTML = '<span class="empty-state">Could not load the dashboard index.</span>';
       });
+
+    function loadAndRenderReport(date) {
+      document.getElementById('summary-text').innerHTML = '<span class="empty-state">Loading…</span>';
+      fetchFresh(`./data/${currentUsername}/analysis-date/${date}.json`)
+        .then(report => renderReport(report))
+        .catch(() => {
+          document.getElementById('summary-text').innerHTML = `<span class="empty-state">Could not load the report for ${date}.</span>`;
+        });
+    }
 
     function riskBadgeClass(level) {
       return level === 'HIGH' ? 'badge-high' : (level === 'MEDIUM' ? 'badge-medium' : 'badge-low');
     }
 
+    const OUTCOME_LABELS = { win: 'Win', loss: 'Loss', draw: 'Draw' };
+
+    // Win/loss/draw *for the analyzed user specifically* — a raw PGN
+    // Result ("1-0"/"0-1"/"1/2-1/2") only tells you which color won, so it
+    // has to be combined with which color the user actually played.
+    function userGameOutcome(game) {
+      if (game.result === '1/2-1/2') return 'draw';
+      const userIsWhite = game.user_color === 'white';
+      if (game.result === '1-0') return userIsWhite ? 'win' : 'loss';
+      if (game.result === '0-1') return userIsWhite ? 'loss' : 'win';
+      return null; // unrecognized/ongoing result string
+    }
+
     function renderSelectedReport() {
-      const idx = document.getElementById('report-select').value;
-      renderReport(idx);
+      const date = document.getElementById('report-select').value;
+      loadAndRenderReport(date);
     }
 
     // --- Full-game replay helpers -------------------------------------------------
@@ -119,19 +210,51 @@
     // tokenize the PGN ourselves and apply each move via {from,to,promotion}
     // instead of feeding SAN strings through chess.js's move parser.
 
-    function extractSans(pgnText) {
-      const movetext = pgnText
+    // Extracts SAN tokens plus each move's [%clk H:MM:SS(.s)] reading (if
+    // present). The naive approach — strip {comments} then strip [headers]
+    // — breaks here: a clock comment's inner "[%clk ...]" is itself
+    // bracketed, so a header-stripping regex run afterward would eat it too.
+    // Collapsing clock comments into a single spaceless token *before*
+    // stripping headers avoids that trap.
+    function extractMovesWithClocks(pgnText) {
+      const movetext = (pgnText || '')
+        .replace(/\{\[%clk\s+([\d:.]+)\]\}/g, '@CLK$1@')
         .replace(/\[[^\]]*\]/g, ' ')   // strip [Header "..."] lines
-        .replace(/\{[^}]*\}/g, ' ')    // strip {comments}, e.g. clock annotations
+        .replace(/\{[^}]*\}/g, ' ')    // strip any other comments
         .trim();
       const tokens = movetext.split(/\s+/).filter(Boolean);
       const sans = [];
+      const clockSeconds = [];
       for (const tok of tokens) {
         if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) continue; // result token
+        const clkMatch = tok.match(/^@CLK([\d:.]+)@$/);
+        if (clkMatch) {
+          clockSeconds[sans.length - 1] = parseClockToSeconds(clkMatch[1]);
+          continue;
+        }
         const cleaned = tok.replace(/^\d+\.(\.\.)?/, '');    // strip "12." / "12..."
-        if (cleaned) sans.push(cleaned);
+        if (cleaned) {
+          sans.push(cleaned);
+          clockSeconds.push(null); // overwritten above if a @CLK@ token follows
+        }
       }
-      return sans;
+      return { sans, clockSeconds };
+    }
+
+    function parseClockToSeconds(clockStr) {
+      const parts = clockStr.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return parts[0] || 0;
+    }
+
+    function parseTimeControl(pgnText) {
+      const m = (pgnText || '').match(/\[TimeControl\s+"([^"]+)"\]/);
+      if (!m || m[1] === '-' || m[1].includes('/')) return { base: null, increment: 0 };
+      const [base, inc] = m[1].split('+');
+      const baseSec = parseInt(base, 10);
+      const incSec = inc ? parseInt(inc, 10) : 0;
+      return { base: Number.isFinite(baseSec) ? baseSec : null, increment: Number.isFinite(incSec) ? incSec : 0 };
     }
 
     function playSanRobust(chess, san) {
@@ -143,35 +266,185 @@
     }
 
     function buildReplay(pgn) {
-      const sans = extractSans(pgn || '');
+      const { sans, clockSeconds } = extractMovesWithClocks(pgn || '');
+      const { base: timeControlBase, increment } = parseTimeControl(pgn || '');
       const chess = new Chess();
       const fens = [chess.fen()];
       const playedSans = [];
-      const moves = []; // moves[i] = {from, to} for the move that produced fens[i+1]
-      for (const san of sans) {
-        const mv = playSanRobust(chess, san);
+      const moves = []; // moves[i] = {from, to, color, piece} for the move that produced fens[i+1]
+      const playedClocks = [];
+      for (let i = 0; i < sans.length; i++) {
+        const mv = playSanRobust(chess, sans[i]);
         if (!mv) break; // stop at the first unparseable token; keep whatever replayed cleanly
         playedSans.push(mv.san);
-        moves.push({ from: mv.from, to: mv.to });
+        moves.push({ from: mv.from, to: mv.to, color: mv.color, piece: mv.piece });
+        playedClocks.push(clockSeconds[i]);
         fens.push(chess.fen());
       }
-      return { fens, sans: playedSans, moves };
+      const timeSpent = computeTimeSpent(moves, playedClocks, timeControlBase, increment);
+      return { fens, sans: playedSans, moves, timeSpent };
     }
 
-    function findPlyByFen(replay, fen) {
-      if (!fen) return null;
-      const placement = fen.split(' ')[0];
-      const idx = replay.fens.findIndex(f => f.split(' ')[0] === placement);
-      return idx >= 0 ? idx : null;
+    // Per-move thinking time = previous clock reading for that color minus
+    // this move's clock reading, plus any increment (which is added back
+    // onto the clock right after the move completes).
+    function computeTimeSpent(moves, clockSeconds, timeControlBase, increment) {
+      const spent = [];
+      const lastClock = { w: timeControlBase, b: timeControlBase };
+      moves.forEach((mv, i) => {
+        const after = clockSeconds[i];
+        const before = lastClock[mv.color];
+        if (after != null && before != null) {
+          spent.push(Math.max(0, before - after + (increment || 0)));
+          lastClock[mv.color] = after;
+        } else {
+          spent.push(null);
+          if (after != null) lastClock[mv.color] = after;
+        }
+      });
+      return spent;
+    }
+
+    // A Chess.com-style move list: move number, then White's and Black's SAN
+    // each paired with a small bar showing time spent, scaled relative to
+    // the longest single think in this particular game (so it reads
+    // sensibly whether the game was bullet or classical).
+    // Hollow glyphs for White, solid for Black — the shapes alone convey
+    // color, on top of which column the move sits in.
+    const PIECE_GLYPH = {
+      w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
+      b: { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' },
+    };
+
+    // Chess.com-style per-move quality tiers, derived from the same
+    // moves_analysis every other overlay already uses. Book/Brilliant/Best
+    // take priority over pure cp_loss buckets; the cp_loss cutoffs below are
+    // a reasonable approximation (Blunder's 300 matches the backend's own
+    // BLUNDER_CP constant in src/rule_based_coach.py) rather than a
+    // reproduction of Chess.com's proprietary win%-based model.
+    const MOVE_QUALITY_ORDER = ['brilliant', 'best', 'excellent', 'good', 'book', 'inaccuracy', 'mistake', 'blunder'];
+    const MOVE_QUALITY_LABELS = {
+      brilliant: 'Brilliant', best: 'Best', excellent: 'Excellent', good: 'Good',
+      book: 'Book', inaccuracy: 'Inaccuracy', mistake: 'Mistake', blunder: 'Blunder',
+    };
+    const MOVE_QUALITY_COLORS = {
+      brilliant: '#1baca6', best: '#38a169', excellent: '#48bb78', good: '#68a063',
+      book: '#a0aec0', inaccuracy: '#ecc94b', mistake: '#ed8936', blunder: '#e53e3e',
+    };
+    // Standard annotation-style glyphs. The "fine" tiers (best/excellent/good/
+    // book) rely on color alone — adding a symbol to every single move would
+    // just be noise; only the notable tiers get one, same as human annotation.
+    const MOVE_QUALITY_ICONS = {
+      brilliant: '!!', best: '', excellent: '', good: '',
+      book: '', inaccuracy: '?!', mistake: '?', blunder: '??',
+    };
+
+    function colorWithAlpha(hex, alpha) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function classifyMoveQuality(ply, analysis, bookPlies) {
+      if (!analysis) return null;
+      if (typeof bookPlies === 'number' && ply <= bookPlies) return 'book';
+      if (analysis.is_brilliant) return 'brilliant';
+      if (analysis.is_top1) return 'best';
+      const cp = analysis.cp_loss ?? 0;
+      if (cp <= 20) return 'excellent';
+      if (cp <= 50) return 'good';
+      if (cp <= 100) return 'inaccuracy';
+      if (cp <= 300) return 'mistake';
+      return 'blunder';
+    }
+
+    function buildMoveQualityTable(moves, movesAnalysis, bookPlies) {
+      const counts = { w: {}, b: {} };
+      MOVE_QUALITY_ORDER.forEach(k => { counts.w[k] = 0; counts.b[k] = 0; });
+
+      moves.forEach((mv, i) => {
+        const category = classifyMoveQuality(i + 1, movesAnalysis && movesAnalysis[i], bookPlies);
+        if (category) counts[mv.color][category]++;
+      });
+
+      const rows = MOVE_QUALITY_ORDER
+        .filter(k => counts.w[k] > 0 || counts.b[k] > 0)
+        .map(k => `
+          <tr>
+            <td class="mq-swatch"><span style="background:${MOVE_QUALITY_COLORS[k]}"></span>${MOVE_QUALITY_LABELS[k]}</td>
+            <td class="mq-count">${counts.w[k]}</td>
+            <td class="mq-count">${counts.b[k]}</td>
+          </tr>
+        `).join('');
+
+      if (!rows) return '';
+
+      return `
+        <table class="move-quality-table">
+          <thead><tr><th></th><th>White</th><th>Black</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function buildMoveListRows(gIdx, sans, moves, timeSpent, keyMoments, movesAnalysis, bookPlies) {
+      const maxSpent = Math.max(0, ...timeSpent.filter(t => t != null));
+      const flaggedByIndex = {};
+      (keyMoments || []).forEach(m => {
+        if (typeof m.ply === 'number') flaggedByIndex[m.ply - 1] = m;
+      });
+      let rows = '';
+      for (let i = 0; i < sans.length; i += 2) {
+        const moveNum = i / 2 + 1;
+        const whiteAnalysis = movesAnalysis && movesAnalysis[i];
+        const blackAnalysis = movesAnalysis && movesAnalysis[i + 1];
+        rows += `<tr>
+          <td class="move-num">${moveNum}.</td>
+          ${moveListCell(gIdx, i, sans[i], moves[i], timeSpent[i], maxSpent, flaggedByIndex[i], whiteAnalysis, bookPlies)}
+          ${i + 1 < sans.length ? moveListCell(gIdx, i + 1, sans[i + 1], moves[i + 1], timeSpent[i + 1], maxSpent, flaggedByIndex[i + 1], blackAnalysis, bookPlies) : '<td></td>'}
+        </tr>`;
+      }
+      return rows;
+    }
+
+    function moveListCell(gIdx, sanIndex, san, mv, spent, maxSpent, moment, analysis, bookPlies) {
+      const ply = sanIndex + 1; // fens[ply] is the position after this move
+      const barPct = (spent != null && maxSpent > 0) ? Math.min(100, (spent / maxSpent) * 100) : 0;
+      const glyph = mv ? (PIECE_GLYPH[mv.color] || {})[mv.piece] || '' : '';
+
+      const category = classifyMoveQuality(ply, analysis, bookPlies);
+      const color = category ? MOVE_QUALITY_COLORS[category] : null;
+      const icon = category ? MOVE_QUALITY_ICONS[category] : '';
+      const style = color ? ` style="background:${colorWithAlpha(color, 0.14)};border-left:3px solid ${color};"` : '';
+      const iconHtml = icon ? `<span class="move-quality-icon" style="color:${color}">${icon}</span>` : '';
+
+      const titleParts = [];
+      if (category) titleParts.push(MOVE_QUALITY_LABELS[category]);
+      if (moment) titleParts.push(`${moment.move_type}: ${moment.explanation || ''}`);
+      const title = titleParts.length ? ` title="${titleParts.join(' — ').replace(/"/g, '&quot;')}"` : '';
+
+      return `
+        <td class="move-cell" data-gidx="${gIdx}" data-ply="${ply}"${style}${title}>
+          ${iconHtml}
+          <span class="move-piece">${glyph}</span>
+          <span class="move-san">${san}</span>
+          <span class="move-timebar"><span class="move-timebar-fill" style="width:${barPct}%"></span></span>
+        </td>
+      `;
     }
 
     const BOARD_PX = 360;
 
-    function squareCenter(square) {
+    function squareCenter(square, orientation) {
       const files = 'abcdefgh';
       const file = files.indexOf(square[0]);
       const rank = parseInt(square[1], 10);
       const size = BOARD_PX / 8;
+      if (orientation === 'black') {
+        // Flipped board: a-file on the right, rank 1 at the top.
+        return { x: (7 - file + 0.5) * size, y: (rank - 1 + 0.5) * size };
+      }
       return { x: (file + 0.5) * size, y: (8 - rank + 0.5) * size };
     }
 
@@ -179,16 +452,17 @@
       const boardEl = document.getElementById(`board-${gIdx}`);
       const svg = document.getElementById(`arrow-${gIdx}`);
       if (boardEl) {
-        boardEl.querySelectorAll('[data-square]').forEach(el => {
-          el.classList.remove('sq-move-highlight', 'sq-suggested-highlight', 'sq-blunder-highlight');
+        boardEl.querySelectorAll('.sq-quality-highlight').forEach(el => {
+          el.classList.remove('sq-quality-highlight');
+          el.style.backgroundColor = '';
         });
       }
       if (svg) svg.innerHTML = '';
     }
 
-    function drawArrow(svg, fromSq, toSq, color, markerId) {
-      const from = squareCenter(fromSq);
-      const to = squareCenter(toSq);
+    function drawArrow(svg, fromSq, toSq, color, markerId, orientation) {
+      const from = squareCenter(fromSq, orientation);
+      const to = squareCenter(toSq, orientation);
       // Shorten the line slightly so the arrowhead doesn't render under the piece glyph.
       const dx = to.x - from.x, dy = to.y - from.y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -223,12 +497,19 @@
       const mv = state.moves[state.index - 1];
       if (!mv) return;
 
-      const fromEl = boardEl.querySelector(`[data-square="${mv.from}"]`);
-      const toEl = boardEl.querySelector(`[data-square="${mv.to}"]`);
-      if (fromEl) fromEl.classList.add('sq-move-highlight');
-      if (toEl) toEl.classList.add('sq-move-highlight');
+      // The move actually played, colored by its own quality tier (brilliant
+      // through blunder) rather than one fixed "played" color.
+      const analysis = state.movesAnalysis && state.movesAnalysis[state.index - 1];
+      const category = classifyMoveQuality(state.index, analysis, state.bookPlies) || 'good';
+      overlaySquares(gIdx, mv, MOVE_QUALITY_COLORS[category], `arrowhead-marker-${category}`);
 
-      drawArrow(svg, mv.from, mv.to, '#d69e2e', 'arrowhead-marker');
+      // Green: the engine's preferred move from the position beforehand,
+      // shown whenever what was played wasn't already the top choice — for
+      // every move in the game, not just the ones flagged as key moments.
+      if (analysis && analysis.best_move && !analysis.is_top1) {
+        const suggested = resolveSanSquares(state.fens[state.index - 1], analysis.best_move);
+        overlaySquares(gIdx, suggested, '#38a169', 'arrowhead-marker-suggested');
+      }
     }
 
     // Resolve a SAN move's from/to squares at an arbitrary FEN, without
@@ -248,28 +529,40 @@
       return match ? { from: match.from, to: match.to } : null;
     }
 
-    function overlaySquares(gIdx, squares, color, markerId, highlightClass) {
+    function overlaySquares(gIdx, squares, color, markerId) {
       if (!squares) return;
       const boardEl = document.getElementById(`board-${gIdx}`);
       const svg = document.getElementById(`arrow-${gIdx}`);
       if (!boardEl || !svg) return;
       const fromEl = boardEl.querySelector(`[data-square="${squares.from}"]`);
       const toEl = boardEl.querySelector(`[data-square="${squares.to}"]`);
-      if (fromEl) fromEl.classList.add(highlightClass);
-      if (toEl) toEl.classList.add(highlightClass);
-      drawArrow(svg, squares.from, squares.to, color, markerId);
+      const bg = colorWithAlpha(color, 0.45);
+      [fromEl, toEl].forEach(el => {
+        if (!el) return;
+        el.classList.add('sq-quality-highlight');
+        el.style.backgroundColor = bg;
+      });
+      const orientation = (gameReplayState[gIdx] && gameReplayState[gIdx].orientation) || 'white';
+      drawArrow(svg, squares.from, squares.to, color, markerId, orientation);
     }
 
     function jumpToMoment(gIdx, ply, bestSan) {
-      setPly(gIdx, ply); // jump to the position right before the mistake; clears prior overlays
+      setPly(gIdx, ply); // jump to the position right before the mistake
       const state = gameReplayState[gIdx];
       if (!state) return;
-      // Red: state.moves[ply] is the move about to be played from this position — the mistake itself.
-      overlaySquares(gIdx, state.moves[ply], '#e53e3e', 'arrowhead-marker-blunder', 'sq-blunder-highlight');
+      // setPly's own drawMoveIndicator may have already drawn an overlay for
+      // the previous move; replace it entirely so this flagged moment's
+      // pair is the only thing shown, not stacked on top of it.
+      clearMoveOverlays(gIdx);
+      // The flagged mistake itself, colored by its own quality tier (usually
+      // mistake/blunder, since that's what got it flagged in the first place).
+      const analysis = state.movesAnalysis && state.movesAnalysis[ply];
+      const category = classifyMoveQuality(ply + 1, analysis, state.bookPlies) || 'blunder';
+      overlaySquares(gIdx, state.moves[ply], MOVE_QUALITY_COLORS[category], `arrowhead-marker-${category}`);
       // Green: the engine's suggested alternative from the same position.
       if (bestSan) {
         const suggested = resolveSanSquares(state.fens[state.index], bestSan);
-        overlaySquares(gIdx, suggested, '#38a169', 'arrowhead-marker-suggested', 'sq-suggested-highlight');
+        overlaySquares(gIdx, suggested, '#38a169', 'arrowhead-marker-suggested');
       }
     }
 
@@ -282,6 +575,16 @@
       if (label) label.textContent = `Move ${state.index} / ${total} — ${lastSan}`;
       const slider = document.getElementById(`slider-${gIdx}`);
       if (slider) slider.value = state.index;
+
+      const moveList = document.getElementById(`movelist-${gIdx}`);
+      if (moveList) {
+        moveList.querySelectorAll('.move-cell.active').forEach(el => el.classList.remove('active'));
+        const activeCell = moveList.querySelector(`.move-cell[data-ply="${state.index}"]`);
+        if (activeCell) {
+          activeCell.classList.add('active');
+          activeCell.scrollIntoView({ block: 'nearest' });
+        }
+      }
     }
 
     function setPly(gIdx, newIndex) {
@@ -295,6 +598,14 @@
     }
 
     document.addEventListener('click', (e) => {
+      const moveCell = e.target.closest('.move-cell');
+      if (moveCell) {
+        const gIdx = parseInt(moveCell.dataset.gidx, 10);
+        const ply = parseInt(moveCell.dataset.ply, 10);
+        if (gameReplayState[gIdx] && !isNaN(ply)) setPly(gIdx, ply);
+        return;
+      }
+
       const btn = e.target.closest('.ctrl-btn, .jump-btn');
       if (!btn) return;
       const gIdx = parseInt(btn.dataset.gidx, 10);
@@ -323,8 +634,9 @@
 
     // --- Main render ----------------------------------------------------------------
 
-    function renderReport(index) {
-      const report = reportHistory[index];
+    function renderReport(report) {
+      const generation = ++renderGeneration;
+
       document.getElementById('summary-text').innerText = report.summary;
 
       const om = report.overall_metrics || {};
@@ -334,6 +646,7 @@
         <div class="metric"><strong>${om.losses ?? '-'}</strong>Losses</div>
         <div class="metric"><strong>${om.draws ?? '-'}</strong>Draws</div>
         <div class="metric"><strong>${om.tactical_accuracy_rating ?? '-'}</strong>Tactical Accuracy</div>
+        <div class="metric"><strong style="color:#1baca6;">${om.total_brilliant_moves ?? '-'}</strong>Brilliant Moves</div>
       `;
 
       const fp = report.fair_play_assessment || {};
@@ -349,15 +662,11 @@
       (report.games || []).forEach((game, gIdx) => {
         const opp = game.opponent_fair_play || {};
         const oppClass = riskBadgeClass(opp.risk_level);
-        const replay = game.pgn ? buildReplay(game.pgn) : null;
+        const keyMoments = game.key_moments || [];
 
-        const moments = (game.key_moments || []).map((m) => {
-          const targetPly = (typeof m.ply === 'number') ? m.ply - 1 : (replay ? findPlyByFen(replay, m.fen) : null);
-          return { m, targetPly };
-        });
-
-        const momentsHtml = moments.map(({ m, targetPly }) => {
-          const jumpBtn = (replay && targetPly !== null)
+        const momentsHtml = keyMoments.map((m) => {
+          const targetPly = (typeof m.ply === 'number') ? m.ply - 1 : null;
+          const jumpBtn = (game.game_slug && targetPly !== null)
             ? `<button class="jump-btn" data-gidx="${gIdx}" data-ply="${targetPly}" data-best="${m.best_move}">&#9654; Jump to this position</button>`
             : '';
           return `
@@ -371,49 +680,29 @@
           `;
         }).join('');
 
-        const replayHtml = replay ? `
-          <div class="board-wrap">
-            <div id="board-${gIdx}" class="board-large"></div>
-            <svg id="arrow-${gIdx}" class="move-arrow-svg"></svg>
-          </div>
-          <div class="replay-controls">
-            <button class="ctrl-btn" data-gidx="${gIdx}" data-action="start" title="Go to start">|&lt;</button>
-            <button class="ctrl-btn" data-gidx="${gIdx}" data-action="prev" title="Previous move">&lt;</button>
-            <span id="ply-label-${gIdx}" class="ply-label"></span>
-            <button class="ctrl-btn" data-gidx="${gIdx}" data-action="next" title="Next move">&gt;</button>
-            <button class="ctrl-btn" data-gidx="${gIdx}" data-action="end" title="Go to end">&gt;|</button>
-          </div>
-          <input type="range" class="ply-slider" id="slider-${gIdx}" data-gidx="${gIdx}" min="0" max="${replay.fens.length - 1}" value="0">
-        ` : '<p class="empty-state">Full game replay isn\'t available for this report (it was generated before replay support was added).</p>';
+        const boardAreaId = `board-area-${gIdx}`;
+        const qualitySummaryId = `quality-summary-${gIdx}`;
+        const replayHtml = game.game_slug
+          ? `<div id="${boardAreaId}"><p class="empty-state">Loading board…</p></div>`
+          : '<p class="empty-state">Full game replay isn\'t available for this report.</p>';
+
+        const outcome = userGameOutcome(game);
+        const outcomeBadge = outcome ? `<span class="badge badge-${outcome}">${OUTCOME_LABELS[outcome]}</span> ` : '';
 
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = `card game-card${outcome ? ` outcome-${outcome}` : ''}`;
         card.innerHTML = `
-          <h2>${game.white} vs ${game.black} <span class="result-tag">(${game.result})</span> <span class="badge ${oppClass}">${opp.risk_level || 'LOW'}</span></h2>
+          <h2>${outcomeBadge}${game.white} vs ${game.black} <span class="result-tag">(${game.result})</span> <span class="badge ${oppClass}">${opp.risk_level || 'LOW'}</span></h2>
           <p class="opp-notes">${opp.notes || ''}</p>
+          <div id="${qualitySummaryId}"></div>
           ${replayHtml}
           <h3>Key Moments</h3>
           ${momentsHtml || '<p class="empty-state">No flagged moments in this game.</p>'}
         `;
         container.appendChild(card);
 
-        if (replay) {
-          const board = Chessboard(`board-${gIdx}`, {
-            position: replay.fens[0],
-            draggable: false,
-            pieceTheme: PIECE_THEME
-          });
-          gameReplayState[gIdx] = { ...replay, index: 0, board };
-
-          // Default to the first flagged mistake (with its overlay) instead
-          // of a blank starting position, so there's something to see right away.
-          const firstMoment = moments.find(({ targetPly }) => targetPly !== null);
-          if (firstMoment) {
-            jumpToMoment(gIdx, firstMoment.targetPly, firstMoment.m.best_move);
-          } else {
-            updatePlyLabel(gIdx);
-            drawMoveIndicator(gIdx);
-          }
+        if (game.game_slug) {
+          loadGameReplay(gIdx, game.game_slug, boardAreaId, qualitySummaryId, keyMoments, report.book_plies, game.user_color, generation);
         }
       });
 
@@ -423,6 +712,77 @@
         planCard.innerHTML = `<h2>Coaching Plan</h2><ul>${report.coaching_plan.map(p => `<li>${p}</li>`).join('')}</ul>`;
         container.appendChild(planCard);
       }
+    }
+
+    function loadGameReplay(gIdx, gameSlug, boardAreaId, qualitySummaryId, keyMoments, bookPlies, userColor, generation) {
+      const orientation = userColor === 'black' ? 'black' : 'white';
+      fetchFresh(`./data/${currentUsername}/games/${gameSlug}.json`)
+        .then(gameData => {
+          if (generation !== renderGeneration) return; // a different report was selected meanwhile
+          const area = document.getElementById(boardAreaId);
+          if (!area) return;
+
+          const replay = buildReplay(gameData.pgn);
+
+          const summaryEl = document.getElementById(qualitySummaryId);
+          if (summaryEl) {
+            summaryEl.innerHTML = buildMoveQualityTable(replay.moves, gameData.moves_analysis, bookPlies);
+          }
+
+          area.innerHTML = `
+            <div class="replay-layout">
+              <div class="replay-left">
+                <div class="board-wrap">
+                  <div id="board-${gIdx}" class="board-large"></div>
+                  <svg id="arrow-${gIdx}" class="move-arrow-svg"></svg>
+                </div>
+                <div class="replay-controls">
+                  <button class="ctrl-btn" data-gidx="${gIdx}" data-action="start" title="Go to start">|&lt;</button>
+                  <button class="ctrl-btn" data-gidx="${gIdx}" data-action="prev" title="Previous move">&lt;</button>
+                  <span id="ply-label-${gIdx}" class="ply-label"></span>
+                  <button class="ctrl-btn" data-gidx="${gIdx}" data-action="next" title="Next move">&gt;</button>
+                  <button class="ctrl-btn" data-gidx="${gIdx}" data-action="end" title="Go to end">&gt;|</button>
+                </div>
+                <input type="range" class="ply-slider" id="slider-${gIdx}" data-gidx="${gIdx}" min="0" max="${replay.fens.length - 1}" value="0">
+              </div>
+              <div class="move-list-wrap">
+                <table class="move-list" id="movelist-${gIdx}">
+                  <thead>
+                    <tr>
+                      <th class="move-num"></th>
+                      <th>♔ White</th>
+                      <th>♚ Black</th>
+                    </tr>
+                  </thead>
+                  <tbody>${buildMoveListRows(gIdx, replay.sans, replay.moves, replay.timeSpent, keyMoments, gameData.moves_analysis, bookPlies)}</tbody>
+                </table>
+              </div>
+            </div>
+          `;
+
+          const board = Chessboard(`board-${gIdx}`, {
+            position: replay.fens[0],
+            draggable: false,
+            pieceTheme: PIECE_THEME,
+            orientation: orientation
+          });
+          gameReplayState[gIdx] = { ...replay, movesAnalysis: gameData.moves_analysis || [], bookPlies, index: 0, board, orientation };
+
+          // Default to the first flagged mistake (with its overlay) instead
+          // of a blank starting position, so there's something to see right away.
+          const firstMoment = keyMoments.find(m => typeof m.ply === 'number');
+          if (firstMoment) {
+            jumpToMoment(gIdx, firstMoment.ply - 1, firstMoment.best_move);
+          } else {
+            updatePlyLabel(gIdx);
+            drawMoveIndicator(gIdx);
+          }
+        })
+        .catch(() => {
+          if (generation !== renderGeneration) return;
+          const area = document.getElementById(boardAreaId);
+          if (area) area.innerHTML = '<p class="empty-state">Could not load this game\'s replay.</p>';
+        });
     }
   </script>
 </body>

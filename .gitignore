@@ -7,5 +7,5 @@ reports/*.pdf
 .DS_Store
 
 # Generated locally / read from the live GitHub Pages deployment at runtime
-# (see REMOTE_HISTORY_URL) — never the source of truth, shouldn't be committed.
-data/analysis.json
+# (see REMOTE_DATA_BASE_URL) — never the source of truth, shouldn't be committed.
+data/

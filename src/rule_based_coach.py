@@ -195,6 +195,7 @@ def generate_analysis(username: str, current_date: str, analyses: list[GameAnaly
         fair_play_notes = "All opponents' ACPL and top-1 match rates were consistent with normal human play."
 
     total_blunders = sum(1 for m in user_moves_all if m.cp_loss >= BLUNDER_CP)
+    total_brilliant_moves = sum(1 for m in user_moves_all if m.is_brilliant)
 
     summary = (
         f"Across {total_games} games ({wins}W/{losses}L/{draws}D), {username} averaged {overall_acpl} "
@@ -235,6 +236,7 @@ def generate_analysis(username: str, current_date: str, analyses: list[GameAnaly
             "draws": draws,
             "primary_opening_weakness": primary_opening_weakness,
             "tactical_accuracy_rating": tactical_rating,
+            "total_brilliant_moves": total_brilliant_moves,
         },
         "fair_play_assessment": {
             "suspicious_activity_detected": suspicious_activity_detected,

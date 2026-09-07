@@ -8,7 +8,14 @@ from src import config
 from src.chess_com_client import get_games_in_range, get_recent_games, group_by_day
 from src.mailer import send_report_email
 from src.pdf_report import build_pdf
-from src.persistence import load_history, persist_report, remove_report_for_date, report_exists, sync_from_remote
+from src.persistence import (
+    load_index,
+    persist_report,
+    remove_report_for_date,
+    report_exists,
+    sync_from_remote,
+    write_latest_pointer,
+)
 from src.stockfish_engine import StockfishAnalyzer, format_metrics_block
 
 
@@ -50,6 +57,10 @@ def parse_args():
         help="Backfill mode only: overwrite a day's report if one already exists instead of skipping it",
     )
     return parser.parse_args()
+
+
+def user_root() -> str:
+    return os.path.join(config.DATA_DIR, config.CHESS_USERNAME)
 
 
 def analyze_games(games: list[dict]) -> list:
@@ -99,9 +110,34 @@ def attach_pgns(report: dict, games: list[dict]) -> None:
         g["pgn"] = pgn_by_url.get(g.get("game_id"), "")
 
 
+def attach_move_analysis(report: dict, analyses: list) -> None:
+    """Embed every move's engine best-move/cp_loss/brilliancy (not just
+    flagged blunders) so the dashboard can show a best-vs-played comparison
+    and highlight brilliant moves at every step.
+
+    moves_analysis[i] describes the move at ply i+1 — same 1-indexed `ply`
+    convention already used by key_moments, so it lines up directly with the
+    frontend's 0-indexed replay arrays (state.sans[i]/state.moves[i]).
+    """
+    analysis_by_url = {a.url: a for a in analyses}
+    for g in report.get("games", []):
+        a = analysis_by_url.get(g.get("game_id"))
+        if not a:
+            continue
+        g["moves_analysis"] = [
+            {
+                "best_move": m.san_best,
+                "cp_loss": m.cp_loss,
+                "is_top1": m.is_top1,
+                "is_brilliant": m.is_brilliant,
+            }
+            for m in a.moves
+        ]
+
+
 def persist_and_output(args, report: dict, current_date: str, last_game_end_time: int | None = None) -> None:
-    persist_report(report, config.ANALYSIS_FILE, last_game_end_time=last_game_end_time)
-    print(f"  Report persisted to {config.ANALYSIS_FILE}")
+    persist_report(report, user_root(), last_game_end_time=last_game_end_time)
+    print(f"  Report persisted ({current_date}.json + index)")
 
     pdf_path = None
     if not args.skip_pdf:
@@ -138,7 +174,7 @@ def process_day(args, day: dt.date, day_games: list[dict], force_overwrite: bool
     ones) and replaces whatever report was previously stored for that date.
     """
     date_str = day.isoformat()
-    already_exists = report_exists(config.ANALYSIS_FILE, date_str)
+    already_exists = report_exists(user_root(), date_str)
     if already_exists and not force_overwrite:
         print(f"[{date_str}] report already exists, skipping (pass --force to overwrite)")
         return
@@ -151,13 +187,17 @@ def process_day(args, day: dt.date, day_games: list[dict], force_overwrite: bool
 
     report = build_report(args, day_games, analyses, date_str)
     attach_pgns(report, day_games)
+    attach_move_analysis(report, analyses)
+    # So the dashboard can classify early moves as "Book" without guessing
+    # the value main.py/Stockfish actually used for this run.
+    report["book_plies"] = config.STOCKFISH_BOOK_PLIES
 
     if args.dry_run:
         print(f"[{date_str}] dry run — report generated but not persisted/emailed")
         return
 
     if already_exists:
-        remove_report_for_date(config.ANALYSIS_FILE, date_str)
+        remove_report_for_date(user_root(), date_str)
 
     last_game_end_time = max(g.get("end_time", 0) for g in day_games)
     persist_and_output(args, report, date_str, last_game_end_time=last_game_end_time)
@@ -173,8 +213,8 @@ def run_single(args) -> None:
     never split into a second report for the same day. A day with no new games
     is left completely untouched, and a run that finds nothing new is a no-op.
     """
-    history = load_history(config.ANALYSIS_FILE)
-    since_epoch = history.get("last_game_end_time")
+    index = load_index(user_root())
+    since_epoch = index.get("last_game_end_time")
 
     print(f"Checking for games played by {config.CHESS_USERNAME} since the last run...")
     new_games = get_recent_games(config.CHESS_USERNAME, args.limit, since_epoch)
@@ -232,9 +272,12 @@ def main():
     if args.use_claude and not config.ANTHROPIC_API_KEY:
         sys.exit("ANTHROPIC_API_KEY is not set (required for --use-claude).")
 
-    if config.REMOTE_HISTORY_URL:
-        print(f"Syncing local state from {config.REMOTE_HISTORY_URL}...")
-        sync_from_remote(config.REMOTE_HISTORY_URL, config.ANALYSIS_FILE)
+    write_latest_pointer(config.DATA_DIR, config.CHESS_USERNAME)
+
+    if config.REMOTE_DATA_BASE_URL:
+        remote_user_url = f"{config.REMOTE_DATA_BASE_URL.rstrip('/')}/{config.CHESS_USERNAME}"
+        print(f"Syncing local state from {remote_user_url}...")
+        sync_from_remote(remote_user_url, user_root())
 
     if args.since:
         run_backfill(args)

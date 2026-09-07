@@ -51,7 +51,7 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           # Pull the current published state from the live site itself instead of
           # relying on a git-committed copy — no commit/push needed at all this way.
-          REMOTE_HISTORY_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/analysis.json
+          REMOTE_DATA_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data
         run: python main.py --skip-email --skip-pdf
 
       - name: Upload Pages artifact

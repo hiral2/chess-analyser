@@ -14,6 +14,89 @@ MAX_CP_LOSS = 1000
 DEVIATION_THRESHOLD_CP = 100  # flag moves that lose >= 1 pawn as candidate key moments
 MAX_DEVIATIONS_PER_GAME = 5
 
+_PIECE_VALUES = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 0,
+}
+# Heuristic "brilliant move" thresholds — see _is_brilliant_move. This is a
+# material-only approximation of Chess.com's "Brilliant!" annotation, not a
+# faithful reproduction of it: it uses a proper multi-attacker exchange
+# evaluation (see _static_exchange_eval) so it gets ordinary trades right,
+# but it has no notion of checks, pins, or mating nets — a move whose real
+# justification is purely tactical (not material) can still get flagged
+# just because the engine also happens to confirm it's best. Good enough
+# for a highlight, not a certification.
+BRILLIANT_EVAL_CAP = 500  # skip already-decided positions
+BRILLIANT_MIN_NET_LOSS = 2  # must risk at least a minor piece's worth, net
+
+
+def _static_exchange_eval(occupied_value: int, first_side_attackers: list[int], second_side_attackers: list[int]) -> int:
+    """Static Exchange Evaluation for captures piling up on one square.
+
+    `occupied_value` is the value of whatever currently sits there, about to
+    be captured by `first_side_attackers`'s cheapest piece. Recursively
+    resolves the exchange: a side captures only if doing so doesn't leave
+    them worse off than simply declining (0) — the standard "stop when it
+    stops being profitable" rule, rather than naively playing out every
+    possible capture regardless of whether it's a good idea. Returns the net
+    material result for `first_side_attackers`'s side under optimal play by
+    both sides.
+
+    This ignores anything not reducible to piece values on this one square
+    — discovered attacks, checks, pins, and x-ray attacks revealed as
+    pieces are removed are all out of scope.
+    """
+    if not first_side_attackers:
+        return 0
+    capturing_value = first_side_attackers[0]
+    remaining_first = first_side_attackers[1:]
+    gain_if_capture = occupied_value - _static_exchange_eval(capturing_value, second_side_attackers, remaining_first)
+    return max(0, gain_if_capture)
+
+
+def _is_brilliant_move(board: chess.Board, move: chess.Move, mover_color: bool, is_top1: bool, eval_before: int) -> bool:
+    """Best engine move, not forced, not in an already-decided position,
+    that offers up real material: a full static-exchange evaluation of the
+    destination square says the opponent nets a material gain there, yet
+    the engine still endorses the move as best.
+    """
+    if not is_top1 or abs(eval_before) >= BRILLIANT_EVAL_CAP:
+        return False
+    if board.legal_moves.count() <= 1:
+        return False  # forced move
+
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type in (chess.PAWN, chess.KING):
+        return False
+    moved_value = _PIECE_VALUES[piece.piece_type]
+
+    captured = board.piece_at(move.to_square)
+    gained_value = _PIECE_VALUES[captured.piece_type] if captured else 0
+
+    board_after = board.copy(stack=False)
+    board_after.push(move)
+    opponent_color = not mover_color
+
+    opponent_attackers = sorted(
+        _PIECE_VALUES.get(board_after.piece_at(sq).piece_type, 0)
+        for sq in board_after.attackers(opponent_color, move.to_square)
+    )
+    if not opponent_attackers:
+        return False  # nothing en prise; not a sacrifice
+
+    mover_defenders = sorted(
+        _PIECE_VALUES.get(board_after.piece_at(sq).piece_type, 0)
+        for sq in board_after.attackers(mover_color, move.to_square)
+    )
+
+    exchange_result = _static_exchange_eval(moved_value, opponent_attackers, mover_defenders)
+    net_material_swing = gained_value - exchange_result
+    return net_material_swing <= -BRILLIANT_MIN_NET_LOSS
+
 
 @dataclass
 class MoveRecord:
@@ -26,6 +109,7 @@ class MoveRecord:
     cp_loss: int
     is_top1: bool
     eval_before: int  # centipawns, from the mover's point of view
+    is_brilliant: bool = False
 
 
 @dataclass
@@ -120,6 +204,7 @@ class StockfishAnalyzer:
             san_best = board.san(best_move) if best_move else None
             is_top1 = best_move is not None and best_move == move
             san_played = board.san(move)
+            is_brilliant = _is_brilliant_move(board, move, board.turn, is_top1, eval_before)
 
             board.push(move)
             info = self._engine.analyse(board, limit)
@@ -139,6 +224,7 @@ class StockfishAnalyzer:
                     cp_loss=cp_loss,
                     is_top1=is_top1,
                     eval_before=eval_before,
+                    is_brilliant=is_brilliant,
                 )
             )
 

@@ -1,14 +1,18 @@
-name: Backfill Specific Day
+name: Backfill Date Range
 
 on:
   workflow_dispatch:
     inputs:
-      date:
-        description: "Date to (re)analyze, UTC (YYYY-MM-DD)"
+      since:
+        description: "Start date to (re)analyze, UTC (YYYY-MM-DD)"
         required: true
         type: string
+      until:
+        description: "End date, inclusive, UTC (YYYY-MM-DD). Leave blank for 'since' through today."
+        required: false
+        type: string
       force:
-        description: "Overwrite that day's report if one already exists"
+        description: "Overwrite a day's report if one already exists"
         required: false
         type: boolean
         default: false
@@ -42,7 +46,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Analyze the requested day
+      - name: Analyze the requested date range
         env:
           CHESS_USERNAME: ${{ secrets.CHESS_USERNAME }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -54,13 +58,17 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          BACKFILL_DATE: ${{ inputs.date }}
+          BACKFILL_SINCE: ${{ inputs.since }}
+          BACKFILL_UNTIL: ${{ inputs.until }}
           BACKFILL_FORCE: ${{ inputs.force }}
           # Pull the current published state from the live site itself instead of
           # relying on a git-committed copy — no commit/push needed at all this way.
-          REMOTE_HISTORY_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/analysis.json
+          REMOTE_DATA_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data
         run: |
-          ARGS=(--since "$BACKFILL_DATE" --until "$BACKFILL_DATE" --skip-email --skip-pdf)
+          ARGS=(--since "$BACKFILL_SINCE" --skip-email --skip-pdf)
+          if [ -n "$BACKFILL_UNTIL" ]; then
+            ARGS+=(--until "$BACKFILL_UNTIL")
+          fi
           if [ "$BACKFILL_FORCE" = "true" ]; then
             ARGS+=(--force)
           fi
