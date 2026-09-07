@@ -268,7 +268,13 @@ fresh `git clone` simply won't have a `data/` directory until you run
   players as light/dark pills (♔/♚) rather than plain "White vs Black" text,
   and the specific opening played (name + ECO), sourced from the same
   `opening_name`/`eco` fields the openings catalog uses — already present in
-  the day report itself, no extra fetch needed.
+  the day report itself, no extra fetch needed. A "PGN" button in each
+  card's top-right corner opens a shared modal (one instance reused across
+  every game, not duplicated per card) showing that game's raw PGN in a
+  read-only textarea with a "Copy PGN" button (Clipboard API, with a
+  `textarea`+`execCommand` fallback for non-secure contexts) — using the PGN
+  already fetched for the replay board, no extra request. Closes via the ✕
+  button, clicking the backdrop, or Escape.
 - `openings.html` — a second page, linked from the dashboard header: every
   distinct opening you've actually played, grouped by ECO volume (A-E),
   each with its own step-through board built from `openings.json`'s

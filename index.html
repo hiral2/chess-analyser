@@ -12,6 +12,7 @@
     .header { background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
     .card { background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
     .board-large { width: 360px; margin: 12px 0; }
+    .board-area-loading { min-height: 420px; }
     .board-wrap { position: relative; width: 360px; margin: 12px 0; }
     .board-wrap .board-large { margin: 0; }
     .move-arrow-svg { position: absolute; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; }
@@ -62,6 +63,20 @@
     .game-meta { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .opening-line { margin: 0 0 10px; font-size: 13px; color: #4a5568; }
     .opening-eco { color: #a0aec0; font-family: monospace; font-size: 12px; }
+    .game-card { position: relative; }
+    .pgn-corner-btn { position: absolute; top: 16px; right: 16px; padding: 5px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #cbd5e0; background: #fff; cursor: pointer; color: #4a5568; }
+    .pgn-corner-btn:hover { background: #edf2f7; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(26, 32, 44, 0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal-overlay[hidden] { display: none; }
+    .modal-box { background: #fff; border-radius: 8px; padding: 20px; width: 100%; max-width: 620px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-header h3 { margin: 0; font-size: 16px; }
+    .modal-close { background: none; border: none; font-size: 22px; line-height: 1; cursor: pointer; color: #718096; padding: 0 4px; }
+    .modal-close:hover { color: #2d3748; }
+    .pgn-textarea { flex: 1; width: 100%; box-sizing: border-box; min-height: 220px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #cbd5e0; border-radius: 6px; resize: vertical; color: #2d3748; background: #f7fafc; }
+    .modal-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .pgn-copy-btn { padding: 6px 14px; font-size: 13px; border-radius: 6px; border: 1px solid #cbd5e0; background: #fff; cursor: pointer; color: #2d3748; }
+    .pgn-copy-btn:hover { background: #edf2f7; }
     .replay-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
     .replay-left { flex: 0 0 auto; }
     .move-list-wrap { flex: 1 1 220px; min-width: 200px; max-width: 320px; max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; margin: 12px 0; }
@@ -79,6 +94,10 @@
     .move-timebar { display: inline-block; width: 40px; height: 5px; background: #edf2f7; border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 4px; }
     .move-timebar-fill { display: block; height: 100%; background: #a0aec0; }
     .move-cell.active .move-timebar-fill { background: #4299e1; }
+    .report-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; color: #718096; }
+    .report-loading[hidden] { display: none; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #4299e1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -93,7 +112,24 @@
     <div id="fair-play-banner"></div>
   </div>
 
-  <div id="moments-container"></div>
+  <div id="report-loading" class="report-loading" hidden>
+    <div class="spinner"></div>
+    <p>Loading full game replays…</p>
+  </div>
+  <div id="moments-container" hidden></div>
+
+  <div class="modal-overlay" id="pgn-modal" hidden>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="pgn-modal-title">PGN</h3>
+        <button class="modal-close" title="Close">&times;</button>
+      </div>
+      <textarea class="pgn-textarea" id="pgn-modal-text" readonly onclick="this.select()"></textarea>
+      <div class="modal-actions">
+        <button class="pgn-copy-btn">&#128203; Copy PGN</button>
+      </div>
+    </div>
+  </div>
 
   <svg width="0" height="0" style="position: absolute;">
     <defs>
@@ -595,7 +631,20 @@
         const activeCell = moveList.querySelector(`.move-cell[data-ply="${state.index}"]`);
         if (activeCell) {
           activeCell.classList.add('active');
-          activeCell.scrollIntoView({ block: 'nearest' });
+          // Scroll only the move-list's own scrollable panel into position —
+          // never activeCell.scrollIntoView(), which (when the card isn't
+          // already in the viewport, e.g. during the initial render of every
+          // game at once) escalates to scrolling the whole page, leaving it
+          // wherever the last game processed happens to sit.
+          const wrap = activeCell.closest('.move-list-wrap');
+          if (wrap) {
+            const row = activeCell.closest('tr') || activeCell;
+            if (row.offsetTop < wrap.scrollTop) {
+              wrap.scrollTop = row.offsetTop;
+            } else if (row.offsetTop + row.offsetHeight > wrap.scrollTop + wrap.clientHeight) {
+              wrap.scrollTop = row.offsetTop + row.offsetHeight - wrap.clientHeight;
+            }
+          }
         }
       }
     }
@@ -659,12 +708,74 @@
       updateEvalBar(gIdx);
     }
 
+    function openPgnModal(gIdx) {
+      const state = gameReplayState[gIdx];
+      const modal = document.getElementById('pgn-modal');
+      const textEl = document.getElementById('pgn-modal-text');
+      const titleEl = document.getElementById('pgn-modal-title');
+      if (!modal || !textEl) return;
+      textEl.value = (state && state.pgn) || 'PGN not loaded yet — try again in a moment.';
+      if (titleEl) titleEl.textContent = (state && state.gameTitle) || 'PGN';
+      modal.hidden = false;
+      textEl.focus();
+      textEl.select();
+    }
+
+    function closePgnModal() {
+      const modal = document.getElementById('pgn-modal');
+      if (modal) modal.hidden = true;
+    }
+
+    function copyPgnFromModal(copyBtn) {
+      const textEl = document.getElementById('pgn-modal-text');
+      const pgn = textEl ? textEl.value : '';
+      const originalLabel = copyBtn.innerHTML;
+      const showFeedback = (text) => {
+        copyBtn.textContent = text;
+        setTimeout(() => { copyBtn.innerHTML = originalLabel; }, 1500);
+      };
+      if (!pgn) {
+        showFeedback('Nothing to copy');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pgn).then(() => showFeedback('Copied!')).catch(() => showFeedback('Copy failed'));
+      } else {
+        // Fallback for non-secure contexts / older browsers without the Clipboard API.
+        textEl.select();
+        try {
+          document.execCommand('copy');
+          showFeedback('Copied!');
+        } catch (err) {
+          showFeedback('Copy failed');
+        }
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePgnModal();
+    });
+
     document.addEventListener('click', (e) => {
       const moveCell = e.target.closest('.move-cell');
       if (moveCell) {
         const gIdx = parseInt(moveCell.dataset.gidx, 10);
         const ply = parseInt(moveCell.dataset.ply, 10);
         if (gameReplayState[gIdx] && !isNaN(ply)) setPly(gIdx, ply);
+        return;
+      }
+
+      const pgnCornerBtn = e.target.closest('.pgn-corner-btn');
+      if (pgnCornerBtn) {
+        openPgnModal(pgnCornerBtn.dataset.gidx);
+        return;
+      }
+
+      if (e.target.closest('.modal-close') || e.target.classList.contains('modal-overlay')) {
+        closePgnModal();
+        return;
+      }
+
+      if (e.target.closest('.pgn-copy-btn')) {
+        copyPgnFromModal(e.target.closest('.pgn-copy-btn'));
         return;
       }
 
@@ -718,8 +829,18 @@
       `;
 
       const container = document.getElementById('moments-container');
-      container.innerHTML = '';
-      gameReplayState = {};
+      const loadingEl = document.getElementById('report-loading');
+      // Only the very first render (container still empty) shows the
+      // spinner. A report switch keeps the *current* content on screen,
+      // untouched, until the new one is fully ready — no collapse/empty
+      // state in between, which is what was causing the scroll jump.
+      if (container.children.length === 0) loadingEl.hidden = false;
+
+      // Build the new report into a detached node so nothing on screen
+      // changes while it's assembled and its game data is fetched.
+      const newContainer = document.createElement('div');
+      const replayLoadPromises = [];
+      const replayByGidx = {};
 
       (report.games || []).forEach((game, gIdx) => {
         const opp = game.opponent_fair_play || {};
@@ -745,7 +866,7 @@
         const boardAreaId = `board-area-${gIdx}`;
         const qualitySummaryId = `quality-summary-${gIdx}`;
         const replayHtml = game.game_slug
-          ? `<div id="${boardAreaId}"><p class="empty-state">Loading board…</p></div>`
+          ? `<div id="${boardAreaId}" class="board-area-loading"><p class="empty-state">Loading board…</p></div>`
           : '<p class="empty-state">Full game replay isn\'t available for this report.</p>';
 
         const outcome = userGameOutcome(game);
@@ -753,10 +874,14 @@
         const openingLine = game.opening_name
           ? `<p class="opening-line"><strong>Opening:</strong> ${game.opening_name}${game.eco ? ` <span class="opening-eco">${game.eco}</span>` : ''}</p>`
           : '';
+        const pgnCornerBtn = game.game_slug
+          ? `<button class="pgn-corner-btn" data-gidx="${gIdx}" title="View and copy this game's PGN">PGN</button>`
+          : '';
 
         const card = document.createElement('div');
         card.className = `card game-card${outcome ? ` outcome-${outcome}` : ''}`;
         card.innerHTML = `
+          ${pgnCornerBtn}
           <h2 class="players-line">
             <span class="player-pill player-white">&#9812; ${game.white}</span>
             <span class="vs-text">vs</span>
@@ -774,10 +899,14 @@
           <h3>Key Moments</h3>
           ${momentsHtml || '<p class="empty-state">No flagged moments in this game.</p>'}
         `;
-        container.appendChild(card);
+        newContainer.appendChild(card);
 
         if (game.game_slug) {
-          loadGameReplay(gIdx, game.game_slug, boardAreaId, qualitySummaryId, keyMoments, report.book_plies, game.user_color, generation);
+          replayLoadPromises.push(
+            fetchFresh(`./data/${currentUsername}/games/${game.game_slug}.json`)
+              .then(gameData => ({ gIdx, boardAreaId, qualitySummaryId, keyMoments, userColor: game.user_color, gameData }))
+              .catch(() => ({ gIdx, boardAreaId, qualitySummaryId, keyMoments, userColor: game.user_color, gameData: null }))
+          );
         }
       });
 
@@ -785,23 +914,28 @@
         const planCard = document.createElement('div');
         planCard.className = 'card';
         planCard.innerHTML = `<h2>Coaching Plan</h2><ul>${report.coaching_plan.map(p => `<li>${p}</li>`).join('')}</ul>`;
-        container.appendChild(planCard);
+        newContainer.appendChild(planCard);
       }
-    }
 
-    function loadGameReplay(gIdx, gameSlug, boardAreaId, qualitySummaryId, keyMoments, bookPlies, userColor, generation) {
-      const orientation = userColor === 'black' ? 'black' : 'white';
-      fetchFresh(`./data/${currentUsername}/games/${gameSlug}.json`)
-        .then(gameData => {
-          if (generation !== renderGeneration) return; // a different report was selected meanwhile
-          const area = document.getElementById(boardAreaId);
+      // Resolve every game's data and pre-build its replay markup while
+      // `newContainer` is still detached — the only async gap in the whole
+      // render, and nothing the user can see is touched during it.
+      Promise.all(replayLoadPromises).then(results => {
+        if (generation !== renderGeneration) return; // a newer report was selected meanwhile
+
+        results.forEach(({ gIdx, boardAreaId, qualitySummaryId, keyMoments, gameData }) => {
+          const area = newContainer.querySelector(`#${boardAreaId}`);
           if (!area) return;
-
+          if (!gameData) {
+            area.innerHTML = '<p class="empty-state">Could not load this game\'s replay.</p>';
+            return;
+          }
           const replay = buildReplay(gameData.pgn);
+          replayByGidx[gIdx] = replay;
 
-          const summaryEl = document.getElementById(qualitySummaryId);
+          const summaryEl = newContainer.querySelector(`#${qualitySummaryId}`);
           if (summaryEl) {
-            summaryEl.innerHTML = buildMoveQualityTable(replay.moves, gameData.moves_analysis, bookPlies);
+            summaryEl.innerHTML = buildMoveQualityTable(replay.moves, gameData.moves_analysis, report.book_plies);
           }
 
           area.innerHTML = `
@@ -835,19 +969,47 @@
                       <th>♚ Black</th>
                     </tr>
                   </thead>
-                  <tbody>${buildMoveListRows(gIdx, replay.sans, replay.moves, replay.timeSpent, keyMoments, gameData.moves_analysis, bookPlies)}</tbody>
+                  <tbody>${buildMoveListRows(gIdx, replay.sans, replay.moves, replay.timeSpent, keyMoments, gameData.moves_analysis, report.book_plies)}</tbody>
                 </table>
               </div>
             </div>
           `;
+        });
 
+        // Atomic swap: the old report disappears and the new one appears in
+        // the same reflow — there's never an in-between moment where the
+        // page is short or empty, which is what was causing the scroll to
+        // jump around.
+        container.replaceChildren(...newContainer.childNodes);
+        container.hidden = false;
+        loadingEl.hidden = true;
+        gameReplayState = {};
+
+        // Only now, with everything attached and actually visible, build the
+        // Chessboard widgets — Chessboard.js measures its container's real
+        // width at construction time, so this has to happen after attaching,
+        // not before (otherwise every piece collapses into the top-left
+        // corner because the measured width comes out as 0).
+        results.forEach(({ gIdx, keyMoments, userColor, gameData }) => {
+          if (!gameData) return;
+          const replay = replayByGidx[gIdx];
+          const orientation = userColor === 'black' ? 'black' : 'white';
           const board = Chessboard(`board-${gIdx}`, {
             position: replay.fens[0],
             draggable: false,
             pieceTheme: PIECE_THEME,
             orientation: orientation
           });
-          gameReplayState[gIdx] = { ...replay, movesAnalysis: gameData.moves_analysis || [], bookPlies, index: 0, board, orientation };
+          gameReplayState[gIdx] = {
+            ...replay,
+            movesAnalysis: gameData.moves_analysis || [],
+            bookPlies: report.book_plies,
+            index: 0,
+            board,
+            orientation,
+            pgn: gameData.pgn || '',
+            gameTitle: `${gameData.white || '?'} vs ${gameData.black || '?'}`,
+          };
 
           // Default to the first flagged mistake (with its overlay) instead
           // of a blank starting position, so there's something to see right away.
@@ -859,12 +1021,8 @@
             drawMoveIndicator(gIdx);
             updateEvalBar(gIdx);
           }
-        })
-        .catch(() => {
-          if (generation !== renderGeneration) return;
-          const area = document.getElementById(boardAreaId);
-          if (area) area.innerHTML = '<p class="empty-state">Could not load this game\'s replay.</p>';
         });
+      });
     }
   </script>
 </body>
