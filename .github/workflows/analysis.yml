@@ -29,9 +29,33 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      # apt-get update (refreshing every package list) is usually the slow
+      # part of installing Stockfish, not the download itself — caching the
+      # installed binary skips both on a hit. Bump the "v1" tag if this ever
+      # needs to be invalidated (e.g. after intentionally upgrading Stockfish).
+      - name: Cache Stockfish
+        id: cache-stockfish
+        uses: actions/cache@v4
+        with:
+          path: /usr/games/stockfish
+          key: stockfish-${{ runner.os }}-v1
 
       - name: Install Stockfish
+        if: steps.cache-stockfish.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y stockfish
+
+      # Fails fast with a clear error if the binary ever isn't where expected
+      # (cache restore gone wrong, apt changing its install path, etc.)
+      # rather than failing deep inside main.py's chess.engine.popen_uci
+      # call. Deliberately checks the absolute path, not PATH resolution —
+      # verified directly (via a real Ubuntu container, not assumed) that
+      # /usr/games is NOT on $PATH for GitHub Actions' non-login `run:`
+      # shell, even though that's genuinely where apt installs the package.
+      - name: Verify Stockfish is available
+        run: test -x /usr/games/stockfish
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
@@ -41,7 +65,7 @@ jobs:
           CHESS_USERNAME: ${{ secrets.CHESS_USERNAME }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
-          STOCKFISH_PATH: stockfish
+          STOCKFISH_PATH: /usr/games/stockfish
           GAMES_LIMIT: ${{ vars.GAMES_LIMIT }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}

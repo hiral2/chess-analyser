@@ -130,6 +130,34 @@ Configure once in the repo's **Settings**:
 
 Email is skipped automatically if `SMTP_HOST`/`EMAIL_TO` aren't set.
 
+### What's cached in CI
+
+Both workflows cache the two setup steps that don't depend on which games got
+analyzed:
+
+- **pip packages** — via `actions/setup-python`'s built-in `cache: pip`,
+  keyed on `requirements.txt`.
+- **The Stockfish binary** — via `actions/cache`, keyed on `runner.os` plus
+  a manually-bumped version tag (bump it if Stockfish itself ever needs to
+  be force-upgraded). On a cache hit, the `apt-get update && apt-get
+  install` step is skipped entirely — `apt-get update` refreshing every
+  package list is usually the slower part, not the actual download.
+
+Both workflows reference Stockfish by its exact absolute path
+(`/usr/games/stockfish`, `STOCKFISH_PATH`) rather than relying on it being
+resolvable via `$PATH` — confirmed directly (via a real Ubuntu container,
+not assumed) that `/usr/games` isn't on `$PATH` for the non-login shell
+GitHub Actions uses for `run:` steps, even though that's genuinely where
+`apt install stockfish` puts the binary.
+
+The actual expensive part — Stockfish *analyzing* each game at depth 14 —
+isn't something GitHub Actions' generic caching can help with, since it's
+real computation tied to which specific games are new. That's already
+handled at the application level instead: `last_game_end_time` means a run
+only ever analyzes games it hasn't seen, and `sync_from_remote` never
+re-fetches a game file that already exists locally, since games are
+immutable once played (see "Persistence model" below).
+
 ## Persistence model
 
 `data/` is **not** tracked in git (see `.gitignore`) and CI never commits it.
