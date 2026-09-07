@@ -14,6 +14,7 @@ from src.persistence import (
     remove_report_for_date,
     report_exists,
     sync_from_remote,
+    recompute_openings,
     write_latest_pointer,
 )
 from src.stockfish_engine import StockfishAnalyzer, format_metrics_block
@@ -111,13 +112,16 @@ def attach_pgns(report: dict, games: list[dict]) -> None:
 
 
 def attach_move_analysis(report: dict, analyses: list) -> None:
-    """Embed every move's engine best-move/cp_loss/brilliancy (not just
-    flagged blunders) so the dashboard can show a best-vs-played comparison
-    and highlight brilliant moves at every step.
+    """Embed every move's engine best-move/cp_loss/brilliancy/eval (not just
+    flagged blunders) so the dashboard can show a best-vs-played comparison,
+    highlight brilliant moves, and drive an evaluation bar at every step.
 
     moves_analysis[i] describes the move at ply i+1 — same 1-indexed `ply`
     convention already used by key_moments, so it lines up directly with the
-    frontend's 0-indexed replay arrays (state.sans[i]/state.moves[i]).
+    frontend's 0-indexed replay arrays (state.sans[i]/state.moves[i]). `eval`
+    is `eval_before` converted to White's point of view (positive = White
+    better) regardless of who was actually on move, so the frontend never
+    has to know whose turn it was to interpret the sign.
     """
     analysis_by_url = {a.url: a for a in analyses}
     for g in report.get("games", []):
@@ -130,9 +134,27 @@ def attach_move_analysis(report: dict, analyses: list) -> None:
                 "cp_loss": m.cp_loss,
                 "is_top1": m.is_top1,
                 "is_brilliant": m.is_brilliant,
+                "eval": m.eval_before if m.mover_color == "white" else -m.eval_before,
             }
             for m in a.moves
         ]
+
+
+def attach_opening_info(report: dict, analyses: list) -> None:
+    """Embed each game's opening name/ECO and its opening-phase move
+    sequence, feeding the per-user openings catalog (see
+    src.persistence.recompute_openings) — a reference for "how do I reach
+    this opening", built from games actually played rather than a canned
+    database.
+    """
+    analysis_by_url = {a.url: a for a in analyses}
+    for g in report.get("games", []):
+        a = analysis_by_url.get(g.get("game_id"))
+        if not a:
+            continue
+        g["opening_name"] = a.opening_name
+        g["eco"] = a.eco
+        g["book_moves"] = [m.san_played for m in a.moves if m.ply <= config.STOCKFISH_BOOK_PLIES]
 
 
 def persist_and_output(args, report: dict, current_date: str, last_game_end_time: int | None = None) -> None:
@@ -188,6 +210,7 @@ def process_day(args, day: dt.date, day_games: list[dict], force_overwrite: bool
     report = build_report(args, day_games, analyses, date_str)
     attach_pgns(report, day_games)
     attach_move_analysis(report, analyses)
+    attach_opening_info(report, analyses)
     # So the dashboard can classify early moves as "Book" without guessing
     # the value main.py/Stockfish actually used for this run.
     report["book_plies"] = config.STOCKFISH_BOOK_PLIES
@@ -201,6 +224,7 @@ def process_day(args, day: dt.date, day_games: list[dict], force_overwrite: bool
 
     last_game_end_time = max(g.get("end_time", 0) for g in day_games)
     persist_and_output(args, report, date_str, last_game_end_time=last_game_end_time)
+    recompute_openings(user_root())
 
 
 def run_single(args) -> None:

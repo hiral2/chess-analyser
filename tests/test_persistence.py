@@ -2,8 +2,10 @@ from unittest.mock import patch
 
 from src.persistence import (
     load_index,
+    load_openings,
     load_report,
     persist_report,
+    recompute_openings,
     remove_report_for_date,
     report_exists,
     sync_from_remote,
@@ -134,6 +136,83 @@ def test_write_latest_pointer(tmp_path):
     assert data == {"username": "someuser"}
 
 
+def _opening_game(name, eco="C50", moves=None):
+    return {"opening_name": name, "eco": eco, "book_moves": moves or ["e4", "e5"]}
+
+
+def _persist_day_with_openings(user_root, date_str, *opening_games):
+    persist_report({"date": date_str, "summary": "x", "games": list(opening_games)}, user_root)
+
+
+def test_recompute_openings_counts_across_days(tmp_path):
+    user_root = str(tmp_path / "someuser")
+
+    _persist_day_with_openings(user_root, "2026-01-01", _opening_game("Italian Game"), _opening_game("Sicilian Defense", eco="B20"))
+    recompute_openings(user_root)
+    catalog = load_openings(user_root)
+    assert len(catalog["openings"]) == 2
+    assert {o["times_played"] for o in catalog["openings"]} == {1}
+
+    _persist_day_with_openings(user_root, "2026-01-02", _opening_game("Italian Game"))
+    recompute_openings(user_root)
+    catalog = load_openings(user_root)
+    assert len(catalog["openings"]) == 2
+    italian = next(o for o in catalog["openings"] if o["opening_name"] == "Italian Game")
+    assert italian["times_played"] == 2
+
+
+def test_recompute_openings_does_not_double_count_a_reprocessed_day(tmp_path):
+    # This is the exact scenario that caused a real bug: a day gets
+    # analyzed, then later reprocessed (new games found, or --force) and its
+    # report replaced. The catalog must reflect the CURRENT report, not the
+    # sum of every version that was ever persisted for that date.
+    user_root = str(tmp_path / "someuser")
+
+    _persist_day_with_openings(user_root, "2026-01-01", _opening_game("Italian Game"), _opening_game("Italian Game"))
+    recompute_openings(user_root)
+    assert load_openings(user_root)["openings"][0]["times_played"] == 2
+
+    # Same date, replaced with a report that has the opening only once.
+    _persist_day_with_openings(user_root, "2026-01-01", _opening_game("Italian Game"))
+    recompute_openings(user_root)
+    catalog = load_openings(user_root)
+    assert len(catalog["openings"]) == 1
+    assert catalog["openings"][0]["times_played"] == 1
+
+
+def test_recompute_openings_keeps_first_seen_move_sequence(tmp_path):
+    user_root = str(tmp_path / "someuser")
+
+    _persist_day_with_openings(user_root, "2026-01-01", _opening_game("Italian Game", moves=["e4", "e5", "Nf3"]))
+    _persist_day_with_openings(user_root, "2026-01-02", _opening_game("Italian Game", moves=["e4", "e5", "Bc4"]))
+    recompute_openings(user_root)
+
+    italian = next(o for o in load_openings(user_root)["openings"] if o["opening_name"] == "Italian Game")
+    assert italian["book_moves"] == ["e4", "e5", "Nf3"]
+    assert italian["times_played"] == 2
+
+
+def test_recompute_openings_ignores_games_without_an_opening_name(tmp_path):
+    user_root = str(tmp_path / "someuser")
+    _persist_day_with_openings(user_root, "2026-01-01", {"eco": "", "opening_name": "", "book_moves": []})
+    recompute_openings(user_root)
+    assert load_openings(user_root)["openings"] == []
+
+
+def test_recompute_openings_sorted_by_times_played_then_name(tmp_path):
+    user_root = str(tmp_path / "someuser")
+    _persist_day_with_openings(user_root, "2026-01-01", _opening_game("Caro-Kann"), _opening_game("Alekhine Defense"))
+    _persist_day_with_openings(user_root, "2026-01-02", _opening_game("Alekhine Defense"))
+    recompute_openings(user_root)
+
+    names = [o["opening_name"] for o in load_openings(user_root)["openings"]]
+    assert names == ["Alekhine Defense", "Caro-Kann"]
+
+
+def test_load_openings_returns_empty_default_when_missing(tmp_path):
+    assert load_openings(str(tmp_path / "missing")) == {"openings": []}
+
+
 class _FakeResponse:
     def __init__(self, payload):
         self._payload = payload
@@ -183,6 +262,24 @@ def test_sync_from_remote_mirrors_index_reports_and_games(tmp_path):
     import json
     assert json.loads((tmp_path / "someuser" / "games" / "aaa.json").read_text())["pgn"] == "1. d4"
     assert json.loads((tmp_path / "someuser" / "games" / "bbb.json").read_text())["pgn"] == "1. c4"
+
+
+def test_sync_from_remote_mirrors_openings_catalog(tmp_path):
+    user_root = str(tmp_path / "someuser")
+    remote_index = {"last_game_end_time": 1, "analysis_dates": []}
+    remote_openings = {"openings": [{"opening_name": "Italian Game", "eco": "C50", "book_moves": ["e4"], "times_played": 3}]}
+
+    def fake_get(url, timeout=None):
+        if url.endswith("index.json"):
+            return _FakeResponse(remote_index)
+        if url.endswith("openings.json"):
+            return _FakeResponse(remote_openings)
+        raise AssertionError(f"unexpected URL {url}")
+
+    with patch("src.persistence.requests.get", side_effect=fake_get):
+        sync_from_remote("https://example.com/data/someuser", user_root)
+
+    assert load_openings(user_root) == remote_openings
 
 
 def test_sync_from_remote_skips_games_already_present_locally(tmp_path):

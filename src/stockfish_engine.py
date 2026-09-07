@@ -119,6 +119,7 @@ class GameAnalysis:
     black: str
     result: str
     opening_name: str = ""
+    eco: str = ""
     moves: list[MoveRecord] = field(default_factory=list)
 
     def player_metrics(self, color: str) -> dict:
@@ -186,6 +187,7 @@ class StockfishAnalyzer:
             black=headers.get("Black", "?"),
             result=headers.get("Result", "*"),
             opening_name=_opening_name_from_headers(headers),
+            eco=headers.get("ECO", ""),
         )
 
         board = game.board()

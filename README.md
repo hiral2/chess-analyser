@@ -147,12 +147,16 @@ the dashboard never downloads more than it's currently displaying:
   it.
 - `data/<username>/games/<slug>.json` — one file per game (immutable once
   written): metadata plus the raw PGN.
+- `data/<username>/openings.json` — running catalog of every distinct
+  opening you've played (name, ECO, opening-phase move sequence, times
+  played), powering `openings.html`.
 
 At the start of a run, if `REMOTE_DATA_BASE_URL` is set (as it is in CI, to
-the workflow's own live Pages URL), it fetches the current index, every day
-report it lists, and every game those reports reference — skipping games
-already present locally, since they never change once written — and mirrors
-all of it locally before doing anything else. This has to pull the *entire*
+the workflow's own live Pages URL), it fetches the current index, the
+openings catalog, every day report the index lists, and every game those
+reports reference — skipping games already present locally, since they
+never change once written — and mirrors all of it locally before doing
+anything else. This has to pull the *entire*
 history, not just what this run touches: a Pages deployment replaces the
 whole published tree rather than merging into it, so anything missing
 locally when the artifact is built would vanish from the live site. The run
@@ -225,4 +229,24 @@ fresh `git clone` simply won't have a `data/` directory until you run
   "black" — with the arrow-overlay pixel math flipped to match, not just the
   board widget itself. Each game card also gets a Win/Loss/Draw badge and a
   matching colored accent border, computed from `result` + `user_color`
-  together (the raw PGN result alone only says which color won).
+  together (the raw PGN result alone only says which color won). A vertical
+  evaluation bar next to the board tracks `moves_analysis[i].eval` (the raw
+  centipawn score, converted to White's point of view server-side, not just
+  `cp_loss`) at every step, using a compressive `tanh` curve so small
+  differences near equal stay legible while large advantages saturate
+  without ever fully hiding the losing side's sliver; it flips anchor ends
+  to match board orientation, and falls back to an `M`/`-M` label once the
+  score crosses into forced-mate territory. Each card header shows both
+  players as light/dark pills (♔/♚) rather than plain "White vs Black" text,
+  and the specific opening played (name + ECO), sourced from the same
+  `opening_name`/`eco` fields the openings catalog uses — already present in
+  the day report itself, no extra fetch needed.
+- `openings.html` — a second page, linked from the dashboard header: every
+  distinct opening you've actually played, grouped by ECO volume (A-E),
+  each with its own step-through board built from `openings.json`'s
+  `book_moves`. This is a catalog of what you've played, not a
+  transposition-aware opening tree or a canned database. It's rebuilt from
+  scratch by `src/persistence.recompute_openings` every time a report is
+  persisted — scanning every currently-known day report rather than
+  incrementally bumping counters — so a day being reprocessed (new games
+  found, or an explicit `--force`) never double-counts its openings.

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Opening Repertoire</title>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.1/chess.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f7fafc; color: #2d3748; }
+    .header { background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
+    .header h1 { margin: 0 0 6px; }
+    .header p { color: #718096; font-size: 14px; margin: 0; }
+    .back-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #4299e1; text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+    .empty-state { color: #718096; font-style: italic; }
+    .layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+    .openings-panel { flex: 1 1 280px; min-width: 260px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; max-height: 640px; overflow-y: auto; }
+    .eco-group h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #a0aec0; background: #f7fafc; margin: 0; padding: 8px 14px; position: sticky; top: 0; border-bottom: 1px solid #e2e8f0; border-top: 1px solid #e2e8f0; }
+    .eco-group:first-child h2 { border-top: none; }
+    .opening-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 9px 14px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+    .opening-item:hover { background: #f7fafc; }
+    .opening-item.active { background: #ebf8ff; }
+    .opening-name { color: #2d3748; }
+    .opening-eco { color: #a0aec0; font-size: 11px; font-family: monospace; }
+    .opening-count { color: #718096; font-size: 12px; white-space: nowrap; }
+    .detail-panel { flex: 1 1 380px; min-width: 320px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; }
+    .detail-title { margin: 0 0 4px; font-size: 18px; }
+    .detail-meta { color: #718096; font-size: 13px; margin: 0 0 14px; }
+    .board-wrap { width: 320px; margin: 0 auto 12px; }
+    .replay-controls { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px 0; }
+    .ctrl-btn { padding: 6px 12px; border: 1px solid #cbd5e0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 14px; }
+    .ctrl-btn:hover { background: #edf2f7; }
+    .ply-label { font-size: 13px; color: #4a5568; min-width: 130px; text-align: center; }
+    .move-line { text-align: center; font-size: 14px; color: #2d3748; margin-top: 8px; line-height: 1.6; }
+    .move-line .current { background: #ebf8ff; border-radius: 4px; padding: 1px 4px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Opening Repertoire</h1>
+    <p>Every opening you've actually played, grouped by ECO volume. Pick one to step through it move by move.</p>
+    <a class="back-link" href="./index.html">&larr; Back to the analysis dashboard</a>
+  </div>
+
+  <div class="layout">
+    <div class="openings-panel" id="openings-panel">
+      <p class="empty-state" style="padding: 14px;">Loading…</p>
+    </div>
+    <div class="detail-panel" id="detail-panel">
+      <p class="empty-state">Select an opening on the left to see it played out.</p>
+    </div>
+  </div>
+
+  <script>
+    let currentUsername = null;
+    let openings = [];
+    let activeIndex = null;
+    let replayState = null; // { fens, sans, index, board }
+
+    function fetchFresh(path) {
+      return fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' }).then(res => res.json());
+    }
+
+    // chess.js@0.12.1's own SAN parser has a known bug: it can reject a
+    // perfectly legal SAN token even though that same move shows up in
+    // .moves({verbose:true}). Sidestep it by resolving the move ourselves
+    // and applying it via {from,to,promotion} instead.
+    function playSanRobust(chess, san) {
+      const legal = chess.moves({ verbose: true });
+      const bareSan = san.replace(/[+#!?]+$/g, '');
+      const match = legal.find(m => m.san === san) || legal.find(m => m.san.replace(/[+#!?]+$/g, '') === bareSan);
+      if (!match) return null;
+      return chess.move({ from: match.from, to: match.to, promotion: match.promotion });
+    }
+
+    function buildFens(sans) {
+      const chess = new Chess();
+      const fens = [chess.fen()];
+      const played = [];
+      for (const san of sans || []) {
+        const mv = playSanRobust(chess, san);
+        if (!mv) break;
+        played.push(mv.san);
+        fens.push(chess.fen());
+      }
+      return { fens, sans: played };
+    }
+
+    // ECO's five standard volumes, used purely to cluster the list into
+    // familiar sections — not a claim about "families" within a volume.
+    const ECO_VOLUME_LABELS = {
+      A: 'A — Flank & irregular openings',
+      B: 'B — Semi-open games (incl. Sicilian, Caro-Kann)',
+      C: 'C — Open games & French Defense',
+      D: 'D — Closed games & Queen\'s Gambit',
+      E: 'E — Indian defenses',
+    };
+
+    function ecoVolume(eco) {
+      const letter = (eco || '').trim().charAt(0).toUpperCase();
+      return ECO_VOLUME_LABELS[letter] ? letter : '?';
+    }
+
+    fetchFresh('./data/latest.json')
+      .then(latest => {
+        currentUsername = latest.username;
+        return fetchFresh(`./data/${currentUsername}/openings.json`);
+      })
+      .then(data => {
+        openings = data.openings || [];
+        renderOpeningsList();
+        if (openings.length > 0) selectOpening(0);
+      })
+      .catch(() => {
+        document.getElementById('openings-panel').innerHTML =
+          '<p class="empty-state" style="padding: 14px;">Could not load the openings catalog.</p>';
+      });
+
+    function renderOpeningsList() {
+      const panel = document.getElementById('openings-panel');
+      if (openings.length === 0) {
+        panel.innerHTML = '<p class="empty-state" style="padding: 14px;">No games analyzed yet.</p>';
+        return;
+      }
+
+      const groups = {};
+      openings.forEach((o, idx) => {
+        const vol = ecoVolume(o.eco);
+        (groups[vol] = groups[vol] || []).push(idx);
+      });
+
+      const volumeOrder = ['A', 'B', 'C', 'D', 'E', '?'];
+      let html = '';
+      volumeOrder.forEach(vol => {
+        const indices = groups[vol];
+        if (!indices) return;
+        const label = ECO_VOLUME_LABELS[vol] || 'Unclassified';
+        html += `<div class="eco-group"><h2>${label}</h2>`;
+        indices.forEach(idx => {
+          const o = openings[idx];
+          html += `
+            <div class="opening-item" data-idx="${idx}">
+              <span>
+                <span class="opening-name">${o.opening_name || 'Unnamed opening'}</span>
+                <span class="opening-eco">${o.eco || ''}</span>
+              </span>
+              <span class="opening-count">${o.times_played}&times;</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+      });
+      panel.innerHTML = html;
+
+      panel.querySelectorAll('.opening-item').forEach(el => {
+        el.addEventListener('click', () => selectOpening(parseInt(el.dataset.idx, 10)));
+      });
+    }
+
+    function selectOpening(idx) {
+      activeIndex = idx;
+      document.querySelectorAll('.opening-item').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.idx, 10) === idx);
+      });
+
+      const opening = openings[idx];
+      const { fens, sans } = buildFens(opening.book_moves);
+      replayState = { fens, sans, index: 0, board: null };
+
+      const detail = document.getElementById('detail-panel');
+      detail.innerHTML = `
+        <h2 class="detail-title">${opening.opening_name || 'Unnamed opening'}</h2>
+        <p class="detail-meta">${opening.eco || 'No ECO code'} &middot; played ${opening.times_played} time${opening.times_played === 1 ? '' : 's'}</p>
+        <div class="board-wrap"><div id="opening-board"></div></div>
+        <div class="replay-controls">
+          <button class="ctrl-btn" data-action="start" title="Go to start">|&lt;</button>
+          <button class="ctrl-btn" data-action="prev" title="Previous move">&lt;</button>
+          <span class="ply-label" id="opening-ply-label"></span>
+          <button class="ctrl-btn" data-action="next" title="Next move">&gt;</button>
+          <button class="ctrl-btn" data-action="end" title="Go to end">&gt;|</button>
+        </div>
+        <p class="move-line" id="opening-move-line"></p>
+      `;
+
+      replayState.board = Chessboard('opening-board', {
+        position: fens[0],
+        draggable: false,
+        pieceTheme: 'https://cdn.jsdelivr.net/gh/oakmac/chessboardjs@1.0.0/website/img/chesspieces/wikipedia/{piece}.png',
+      });
+
+      detail.querySelectorAll('.ctrl-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          switch (btn.dataset.action) {
+            case 'start': setOpeningPly(0); break;
+            case 'prev': setOpeningPly(replayState.index - 1); break;
+            case 'next': setOpeningPly(replayState.index + 1); break;
+            case 'end': setOpeningPly(replayState.fens.length - 1); break;
+          }
+        });
+      });
+
+      updateOpeningDisplay();
+    }
+
+    function setOpeningPly(newIndex) {
+      if (!replayState) return;
+      const clamped = Math.max(0, Math.min(replayState.fens.length - 1, newIndex));
+      replayState.index = clamped;
+      replayState.board.position(replayState.fens[clamped]);
+      updateOpeningDisplay();
+    }
+
+    function updateOpeningDisplay() {
+      const { index, sans } = replayState;
+      const total = replayState.fens.length - 1;
+      const label = document.getElementById('opening-ply-label');
+      if (label) label.textContent = `Move ${index} / ${total}`;
+
+      const moveLine = document.getElementById('opening-move-line');
+      if (moveLine) {
+        let html = '';
+        for (let i = 0; i < sans.length; i += 2) {
+          const moveNum = i / 2 + 1;
+          const whiteSpan = i === index - 1 ? `<span class="current">${sans[i]}</span>` : sans[i];
+          const blackSpan = (i + 1 < sans.length) ? (i + 1 === index - 1 ? ` <span class="current">${sans[i + 1]}</span>` : ` ${sans[i + 1]}`) : '';
+          html += `${moveNum}. ${whiteSpan}${blackSpan}  `;
+        }
+        moveLine.innerHTML = html || '<em>Starting position</em>';
+      }
+    }
+  </script>
+</body>
+</html>

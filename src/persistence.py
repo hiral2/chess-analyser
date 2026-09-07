@@ -10,6 +10,9 @@ Layout under data/<username>/:
   games/<slug>.json    - one file per game (immutable once written): the
                           raw PGN plus basic metadata, keyed by a filesystem
                           -safe slug derived from the Chess.com game id
+  openings.json        - running catalog of every distinct opening played
+                          (name, ECO, opening-phase move sequence, times
+                          played), merged in as new games are analyzed
 
 data/latest.json (sibling to the per-username folders) just points the
 static frontend at which username's data to load: {"username": "..."}.
@@ -53,6 +56,10 @@ def _game_path(user_root: str, slug: str) -> str:
 
 def _day_path(user_root: str, date_str: str) -> str:
     return os.path.join(_analysis_dir(user_root), f"{date_str}.json")
+
+
+def _openings_path(user_root: str) -> str:
+    return os.path.join(user_root, "openings.json")
 
 
 def write_latest_pointer(data_dir: str, username: str) -> None:
@@ -177,6 +184,66 @@ def persist_report(new_report: dict, user_root: str, last_game_end_time: int | N
     return index
 
 
+def load_openings(user_root: str) -> dict:
+    path = _openings_path(user_root)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            pass
+    return {"openings": []}
+
+
+def recompute_openings(user_root: str) -> None:
+    """Rebuild the per-user opening catalog (data/<username>/openings.json)
+    from scratch by scanning every currently-known day report.
+
+    This has to be a full recompute rather than an incremental "add this
+    run's games" update: a day's report can be replaced wholesale (new games
+    found for a day already analyzed, or an explicit --force backfill), and
+    without recomputing from the source of truth each time, a day counted
+    once and then reprocessed later would have its openings counted twice
+    with no way to "un-count" the first pass. Mirrors how general_summary in
+    index.json is kept correct in `persist_report`/`remove_report_for_date`.
+
+    Each game's `opening_name`/`eco`/`book_moves` (the SAN sequence for the
+    opening phase — see main.py's attach_opening_info) survives into its
+    day's persisted report file, so this only needs the day reports, not the
+    original per-run game list.
+    """
+    index = load_index(user_root)
+    by_name: dict[str, dict] = {}
+
+    # Oldest first, so the "reference" move sequence kept for each opening
+    # is from the earliest time it was played, not whichever day happens to
+    # be processed first (analysis_dates is stored newest-first).
+    dates_oldest_first = sorted(index.get("analysis_dates", []), key=lambda r: r.get("date", ""))
+    for entry in dates_oldest_first:
+        report = load_report(user_root, entry.get("date", ""))
+        if not report:
+            continue
+        for g in report.get("games", []):
+            name = g.get("opening_name")
+            if not name:
+                continue
+            if name in by_name:
+                by_name[name]["times_played"] += 1
+            else:
+                by_name[name] = {
+                    "opening_name": name,
+                    "eco": g.get("eco", ""),
+                    "book_moves": g.get("book_moves", []),
+                    "times_played": 1,
+                }
+
+    openings = sorted(by_name.values(), key=lambda o: (-o["times_played"], o["opening_name"]))
+
+    os.makedirs(user_root, exist_ok=True)
+    with open(_openings_path(user_root), "w", encoding="utf-8") as f:
+        json.dump({"openings": openings}, f, indent=2, ensure_ascii=False)
+
+
 def sync_from_remote(base_url: str, user_root: str) -> None:
     """Mirror the currently-published index, every day's report, and every
     game those reports reference, into the local user_root.
@@ -204,6 +271,15 @@ def sync_from_remote(base_url: str, user_root: str) -> None:
         return
 
     _write_index(user_root, remote_index)
+
+    try:
+        resp = requests.get(f"{base_url}/openings.json", timeout=15)
+        resp.raise_for_status()
+        os.makedirs(user_root, exist_ok=True)
+        with open(_openings_path(user_root), "w", encoding="utf-8") as f:
+            json.dump(resp.json(), f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"  Could not fetch remote openings catalog ({e}); using local state instead.")
 
     os.makedirs(_analysis_dir(user_root), exist_ok=True)
     os.makedirs(_games_dir(user_root), exist_ok=True)

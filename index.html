@@ -15,6 +15,10 @@
     .board-wrap { position: relative; width: 360px; margin: 12px 0; }
     .board-wrap .board-large { margin: 0; }
     .move-arrow-svg { position: absolute; top: 0; left: 0; width: 360px; height: 360px; pointer-events: none; }
+    .board-eval-row { display: flex; gap: 8px; align-items: flex-start; }
+    .eval-bar { width: 20px; height: 360px; background: #2d3748; border-radius: 4px; position: relative; overflow: hidden; flex-shrink: 0; }
+    .eval-bar-fill { position: absolute; left: 0; width: 100%; background: #f7fafc; height: 50%; }
+    .eval-label { text-align: center; font-family: monospace; font-size: 12px; font-weight: 700; color: #4a5568; margin: 6px 0 0; }
     .sq-quality-highlight { /* background-color set inline per move's quality tier */ }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
     .badge-low { background: #c6f6d5; color: #22543d; }
@@ -50,6 +54,14 @@
     .mq-swatch span { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     .mq-count { text-align: center; font-weight: 600; color: #2d3748; }
     .result-tag { font-weight: normal; color: #718096; font-size: 14px; }
+    .players-line { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .player-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+    .player-pill.player-white { background: #f7fafc; border: 1px solid #cbd5e0; color: #2d3748; }
+    .player-pill.player-black { background: #2d3748; border: 1px solid #2d3748; color: #f7fafc; }
+    .vs-text { color: #a0aec0; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .game-meta { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .opening-line { margin: 0 0 10px; font-size: 13px; color: #4a5568; }
+    .opening-eco { color: #a0aec0; font-family: monospace; font-size: 12px; }
     .replay-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
     .replay-left { flex: 0 0 auto; }
     .move-list-wrap { flex: 1 1 220px; min-width: 200px; max-width: 320px; max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; margin: 12px 0; }
@@ -73,6 +85,7 @@
 
   <div class="header">
     <h1>Chess Analysis Dashboard</h1>
+    <p style="margin: -4px 0 12px;"><a href="./openings.html" style="font-size: 13px; color: #4299e1; text-decoration: none;">View opening repertoire &rarr;</a></p>
     <label for="report-select"><strong>Select Analysis Run:</strong></label>
     <select id="report-select" onchange="renderSelectedReport()"></select>
     <p id="summary-text"></p>
@@ -587,6 +600,54 @@
       }
     }
 
+    // Our backend caps cp_loss at 1000 but not the raw eval itself, which
+    // carries python-chess's mate_score=100000 sentinel (roughly offset by
+    // moves-to-mate) for forced mates. Any realistic non-mate evaluation
+    // stays well under this, so it's a safe, simple way to detect "this is
+    // actually a mate score" without needing the exact move count.
+    const EVAL_MATE_THRESHOLD = 5000;
+
+    function updateEvalBar(gIdx) {
+      const state = gameReplayState[gIdx];
+      const fillEl = document.getElementById(`eval-bar-fill-${gIdx}`);
+      const labelEl = document.getElementById(`eval-label-${gIdx}`);
+      if (!state || !fillEl) return;
+
+      const analyses = state.movesAnalysis || [];
+      const idx = Math.min(state.index, analyses.length - 1);
+      const analysis = idx >= 0 ? analyses[idx] : null;
+      const cp = analysis ? analysis.eval : null;
+
+      let whitePct = 50;
+      let label = '';
+      if (cp != null) {
+        if (Math.abs(cp) >= EVAL_MATE_THRESHOLD) {
+          whitePct = cp > 0 ? 99 : 1;
+          label = cp > 0 ? 'M' : '-M';
+        } else {
+          // Compressive curve: small differences near 0 stay legible, large
+          // advantages saturate toward the edges without ever fully
+          // vanishing the other side's sliver (matches typical eval bar UX).
+          whitePct = 50 + 50 * Math.tanh(cp / 400);
+          whitePct = Math.max(3, Math.min(97, whitePct));
+          const pawns = (cp / 100).toFixed(1);
+          label = cp > 0 ? `+${pawns}` : pawns;
+        }
+      }
+
+      // The fill always represents White's share of the bar; which end it
+      // anchors to depends on which color is at the bottom of the board.
+      if (state.orientation === 'black') {
+        fillEl.style.top = '0';
+        fillEl.style.bottom = 'auto';
+      } else {
+        fillEl.style.bottom = '0';
+        fillEl.style.top = 'auto';
+      }
+      fillEl.style.height = `${whitePct}%`;
+      if (labelEl) labelEl.textContent = label;
+    }
+
     function setPly(gIdx, newIndex) {
       const state = gameReplayState[gIdx];
       if (!state) return;
@@ -595,6 +656,7 @@
       state.board.position(state.fens[clamped]);
       updatePlyLabel(gIdx);
       drawMoveIndicator(gIdx);
+      updateEvalBar(gIdx);
     }
 
     document.addEventListener('click', (e) => {
@@ -687,12 +749,25 @@
           : '<p class="empty-state">Full game replay isn\'t available for this report.</p>';
 
         const outcome = userGameOutcome(game);
-        const outcomeBadge = outcome ? `<span class="badge badge-${outcome}">${OUTCOME_LABELS[outcome]}</span> ` : '';
+        const outcomeBadge = outcome ? `<span class="badge badge-${outcome}">${OUTCOME_LABELS[outcome]}</span>` : '';
+        const openingLine = game.opening_name
+          ? `<p class="opening-line"><strong>Opening:</strong> ${game.opening_name}${game.eco ? ` <span class="opening-eco">${game.eco}</span>` : ''}</p>`
+          : '';
 
         const card = document.createElement('div');
         card.className = `card game-card${outcome ? ` outcome-${outcome}` : ''}`;
         card.innerHTML = `
-          <h2>${outcomeBadge}${game.white} vs ${game.black} <span class="result-tag">(${game.result})</span> <span class="badge ${oppClass}">${opp.risk_level || 'LOW'}</span></h2>
+          <h2 class="players-line">
+            <span class="player-pill player-white">&#9812; ${game.white}</span>
+            <span class="vs-text">vs</span>
+            <span class="player-pill player-black">&#9818; ${game.black}</span>
+          </h2>
+          <p class="game-meta">
+            <span class="result-tag">${game.result}</span>
+            ${outcomeBadge}
+            <span class="badge ${oppClass}">${opp.risk_level || 'LOW'}</span>
+          </p>
+          ${openingLine}
           <p class="opp-notes">${opp.notes || ''}</p>
           <div id="${qualitySummaryId}"></div>
           ${replayHtml}
@@ -732,10 +807,16 @@
           area.innerHTML = `
             <div class="replay-layout">
               <div class="replay-left">
-                <div class="board-wrap">
-                  <div id="board-${gIdx}" class="board-large"></div>
-                  <svg id="arrow-${gIdx}" class="move-arrow-svg"></svg>
+                <div class="board-eval-row">
+                  <div class="eval-bar" id="eval-bar-${gIdx}">
+                    <div class="eval-bar-fill" id="eval-bar-fill-${gIdx}"></div>
+                  </div>
+                  <div class="board-wrap">
+                    <div id="board-${gIdx}" class="board-large"></div>
+                    <svg id="arrow-${gIdx}" class="move-arrow-svg"></svg>
+                  </div>
                 </div>
+                <p class="eval-label" id="eval-label-${gIdx}"></p>
                 <div class="replay-controls">
                   <button class="ctrl-btn" data-gidx="${gIdx}" data-action="start" title="Go to start">|&lt;</button>
                   <button class="ctrl-btn" data-gidx="${gIdx}" data-action="prev" title="Previous move">&lt;</button>
@@ -776,6 +857,7 @@
           } else {
             updatePlyLabel(gIdx);
             drawMoveIndicator(gIdx);
+            updateEvalBar(gIdx);
           }
         })
         .catch(() => {
