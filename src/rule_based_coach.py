@@ -157,6 +157,8 @@ def generate_analysis(username: str, current_date: str, analyses: list[GameAnaly
                 "game_id": a.url,
                 "white": a.white,
                 "black": a.black,
+                "white_elo": a.white_elo,
+                "black_elo": a.black_elo,
                 "result": a.result,
                 "user_color": user_color,
                 "opponent_fair_play": {

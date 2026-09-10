@@ -118,6 +118,8 @@ class GameAnalysis:
     white: str
     black: str
     result: str
+    white_elo: str = ""
+    black_elo: str = ""
     opening_name: str = ""
     eco: str = ""
     moves: list[MoveRecord] = field(default_factory=list)
@@ -185,6 +187,8 @@ class StockfishAnalyzer:
             url=url,
             white=headers.get("White", "?"),
             black=headers.get("Black", "?"),
+            white_elo=headers.get("WhiteElo", ""),
+            black_elo=headers.get("BlackElo", ""),
             result=headers.get("Result", "*"),
             opening_name=_opening_name_from_headers(headers),
             eco=headers.get("ECO", ""),

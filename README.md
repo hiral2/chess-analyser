@@ -266,7 +266,9 @@ fresh `git clone` simply won't have a `data/` directory until you run
   to match board orientation, and falls back to an `M`/`-M` label once the
   score crosses into forced-mate territory. Each card header shows both
   players as light/dark pills (♔/♚) rather than plain "White vs Black" text,
-  and the specific opening played (name + ECO), sourced from the same
+  each annotated with that player's Chess.com rating for the game (from the
+  PGN's `WhiteElo`/`BlackElo` headers), and the specific opening played
+  (name + ECO), sourced from the same
   `opening_name`/`eco` fields the openings catalog uses — already present in
   the day report itself, no extra fetch needed. A "PGN" button in each
   card's top-right corner opens a shared modal (one instance reused across

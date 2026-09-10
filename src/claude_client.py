@@ -37,6 +37,8 @@ JSON_SCHEMA_BLOCK = """{
       "game_id": "Chess.com URL or unique ID",
       "white": "PlayerWhite",
       "black": "PlayerBlack",
+      "white_elo": "White's rating from the PGN's WhiteElo header, as a string (empty string if absent)",
+      "black_elo": "Black's rating from the PGN's BlackElo header, as a string (empty string if absent)",
       "result": "1-0 / 0-1 / 1/2-1/2",
       "user_color": "white or black",
       "opponent_fair_play": {
